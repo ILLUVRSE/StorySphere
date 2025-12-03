@@ -1,6 +1,7 @@
 // frontend/app/jobs/[id]/job-client.tsx
 "use client";
 import React from "react";
+import ScriptViewer from "@/components/ScriptViewer";
 
 interface JobResult {
   preview_url?: string;
@@ -22,6 +23,7 @@ interface Job {
 export default function JobClient({ id }: { id: string }) {
   const [job, setJob] = React.useState<Job | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [showScript, setShowScript] = React.useState(false);
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
 
   React.useEffect(() => {
@@ -67,6 +69,17 @@ export default function JobClient({ id }: { id: string }) {
       <div>State: <strong>{job.state}</strong></div>
       <div>Progress: <strong>{job.progress ?? 0}%</strong></div>
 
+      {job.state === 'completed' && (
+        <div className="mt-4">
+          <button
+            onClick={() => setShowScript(true)}
+            className="px-4 py-2 bg-teal-700 text-white rounded hover:bg-teal-800 transition-colors"
+          >
+            View Script
+          </button>
+        </div>
+      )}
+
       <h3 className="mt-4 font-medium">Submitted data</h3>
       <pre className="bg-black/10 p-3 rounded">{JSON.stringify(job.data, null, 2)}</pre>
 
@@ -81,6 +94,10 @@ export default function JobClient({ id }: { id: string }) {
         <div className="mt-4 text-red-500">
           <strong>Failed:</strong> {job.failedReason}
         </div>
+      )}
+
+      {showScript && (
+        <ScriptViewer jobId={job.id} onClose={() => setShowScript(false)} />
       )}
     </div>
   );

@@ -52,6 +52,29 @@ app.post('/api/v1/generate', async (req, res) => {
   }
 });
 
+// Regenerate Job Endpoint
+app.post('/api/v1/jobs/:id/regenerate', async (req, res) => {
+  try {
+    const oldId = req.params.id;
+    const oldJob = await generationQueue.getJob(oldId);
+
+    if (!oldJob || !oldJob.data) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Re-enqueue using same data
+    // We use the same name 'generate-episode' as in the create endpoint
+    const newJob = await generationQueue.add('generate-episode', oldJob.data);
+
+    console.log(`Regenerating job ${oldId} -> new job ${newJob.id}`);
+
+    res.json({ jobId: newJob.id });
+  } catch (error) {
+    console.error('Error regenerating job:', error);
+    res.status(500).json({ error: 'Failed to regenerate job' });
+  }
+});
+
 // Get Job Status Endpoint
 app.get('/api/v1/jobs/:id', async (req, res) => {
   try {
