@@ -4,6 +4,7 @@ import { generateScript } from "./ollama";
 import { putJson, putObject, getObjectBuffer } from "./storage";
 import { logForJob } from "./logging";
 import { generateAudioForJob } from "./tts";
+import { renderComfyFrame } from "./comfyui";
 import fs from 'fs/promises';
 import { execFileSync } from 'child_process';
 import path from 'path';
@@ -61,41 +62,78 @@ const worker = new Worker<GenerationJobData>(
       const audioPath = path.join(tmpDir, `audio-${job.id}.mp3`);
       await fs.writeFile(audioPath, audioBuf);
 
-      // Step 3: Visual Generation (simple local ffmpeg placeholder)
-      await logForJob(job.id!, "Step 3: Generating visuals (local ffmpeg placeholder)...");
+      // Step 3: Visual Generation (ComfyUI)
+      await logForJob(job.id!, "Step 3: Generating visuals with ComfyUI...");
       await job.updateProgress(65);
-      const duration = Math.max(1, Math.round(job.data.duration_target || 8));
+
+      const duration = Math.max(1, Math.round(job.data.duration_target || 7));
       const videoPath = path.join(tmpDir, `video-${job.id}.mp4`);
-      // Create a black video of requested duration
-      execFileSync('ffmpeg', [
-        '-y',
-        '-f', 'lavfi',
-        '-i', `color=size=1280x720:duration=${duration}:rate=25:color=black`,
-        '-c:v', 'libx264',
-        '-pix_fmt', 'yuv420p',
-        videoPath
-      ], { stdio: 'ignore' });
+      const imagePath = path.join(tmpDir, `frame-${job.id}.png`);
 
-      // Step 4: Assemble audio+video
-      await logForJob(job.id!, "Step 4: Assembling media with ffmpeg...");
+      try {
+        // Choose a prompt for visuals — use the top scene description or fallback to job prompt
+        const scenePrompt = (script.scenes && script.scenes[0] && script.scenes[0].description)
+          ? `${script.title}\n\n${script.scenes[0].description}`
+          : job.data.prompt;
+
+        const frameBuf = await renderComfyFrame(scenePrompt);
+        await fs.writeFile(imagePath, frameBuf);
+
+        // Create a single-frame video that lasts `duration` seconds
+        execFileSync('ffmpeg', [
+          '-y',
+          '-loop', '1',
+          '-i', imagePath,
+          '-c:v', 'libx264',
+          '-t', String(duration),
+          '-pix_fmt', 'yuv420p',
+          '-vf', 'scale=1280:720', // ensure correct size
+          videoPath
+        ], { stdio: 'ignore' });
+
+        await logForJob(job.id!, `Generated video from ComfyUI frame at ${videoPath}`);
+      } catch (err: any) {
+        await logForJob(job.id!, `ComfyUI visual generation failed: ${err?.message || err}`);
+        throw err;
+      }
+
+      // Step 4: Normalize audio to target duration
+      await logForJob(job.id!, "Step 4: Normalizing audio to duration...");
       await job.updateProgress(85);
-      const previewPath = path.join(tmpDir, `preview-${job.id}.mp4`);
-      execFileSync('ffmpeg', [
-        '-y',
-        '-i', videoPath,
-        '-i', audioPath,
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-shortest',
-        previewPath
-      ], { stdio: 'ignore' });
+      const normalizedAudioPath = path.join(tmpDir, `audio-${job.id}-norm.mp3`);
+      try {
+        execFileSync('ffmpeg', [
+          '-y',
+          '-i', audioPath,
+          '-af', `apad,atrim=0:${duration}`,
+          '-ac', '2',
+          '-ar', '44100',
+          normalizedAudioPath
+        ], { stdio: 'ignore' });
 
-      // Upload preview to MinIO at key "<jobId>/preview.mp4"
-      const previewKey = `${job.id}/preview.mp4`;
-      const previewBuf = await fs.readFile(previewPath);
-      await putObject(previewKey, previewBuf);
-      await logForJob(job.id!, `Preview uploaded to ${config.minio.bucket}/${previewKey}`);
-      await job.updateProgress(100);
+        // Mux video + normalized audio
+        const previewPath = path.join(tmpDir, `preview-${job.id}.mp4`);
+        execFileSync('ffmpeg', [
+          '-y',
+          '-i', videoPath,
+          '-i', normalizedAudioPath,
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-b:a', '128k',
+          '-shortest',
+          previewPath
+        ], { stdio: 'ignore' });
+
+        // upload preview & log
+        const previewKey = `${job.id}/preview.mp4`;
+        const previewBuf = await fs.readFile(previewPath);
+        await putObject(previewKey, previewBuf);
+        await logForJob(job.id!, `Preview uploaded to ${config.minio.bucket}/${previewKey}`);
+        await job.updateProgress(100);
+      } catch (err: any) {
+        await logForJob(job.id!, `FFmpeg assemble failed: ${err?.message || err}`);
+        throw err;
+      }
 
       console.log(`[Job ${job.id}] Completed successfully.`);
       return {
