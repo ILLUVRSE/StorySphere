@@ -1,7 +1,8 @@
-import { Worker, Job } from 'bullmq';
-import { config } from './config';
+// backend/src/worker.ts
+import { Worker, Job } from "bullmq";
+import { config } from "./config";
+import { logForJob } from "./logging";
 
-// Define the Job Data Interface
 interface GenerationJobData {
   prompt: string;
   title: string;
@@ -12,64 +13,65 @@ interface GenerationJobData {
   produce_preview: boolean;
 }
 
-console.log('Starting StorySphere Worker...');
+console.log("Starting StorySphere Worker...");
 
 const worker = new Worker<GenerationJobData>(
-  'generation-queue',
+  "generation-queue",
   async (job: Job) => {
     console.log(`[Job ${job.id}] Processing started: ${job.data.title}`);
     await job.updateProgress(0);
 
     try {
-      // Step 1: Script Generation (Mock/Placeholder)
-      console.log(`[Job ${job.id}] Step 1: Generating script with Ollama (Placeholder)...`);
+      // Step 1: Script Generation
+      await logForJob(job.id!, "Step 1: Generating script with Ollama (placeholder)...");
       await job.updateProgress(10);
       // TODO: Call Ollama
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
 
-      // Step 2: TTS (Mock/Placeholder)
-      console.log(`[Job ${job.id}] Step 2: Generating Audio (Placeholder)...`);
+      // Step 2: TTS
+      await logForJob(job.id!, "Step 2: Generating audio (placeholder)...");
       await job.updateProgress(30);
       // TODO: Call ElevenLabs/Local TTS
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
 
-      // Step 3: Visual Generation (Mock/Placeholder)
-      console.log(`[Job ${job.id}] Step 3: Generating Visuals (Placeholder)...`);
+      // Step 3: Visuals
+      await logForJob(job.id!, "Step 3: Generating visuals (placeholder)...");
       await job.updateProgress(60);
       // TODO: Call ComfyUI
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
 
-      // Step 4: Assembly (Mock/Placeholder)
-      console.log(`[Job ${job.id}] Step 4: Assembling Media (Placeholder)...`);
+      // Step 4: Assembly
+      await logForJob(job.id!, "Step 4: Assembling media (placeholder)...");
       await job.updateProgress(90);
       // TODO: FFmpeg assembly
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
 
-      console.log(`[Job ${job.id}] Completed successfully.`);
+      await logForJob(job.id!, "Completed successfully.");
       await job.updateProgress(100);
 
       return {
-        preview_url: `http://localhost:9000/storysphere-media/${job.id}/preview.mp4`, // Mock URL
-        status: 'completed'
+        preview_url: `http://localhost:9000/storysphere-media/${job.id}/preview.mp4`,
+        status: "completed",
       };
-
-    } catch (error) {
+    } catch (error: any) {
+      const message = (error && error.message) || String(error || "unknown error");
       console.error(`[Job ${job.id}] Failed:`, error);
+      await logForJob(job.id!, `Failed: ${message}`);
       throw error;
     }
   },
   {
     connection: config.redis,
-    concurrency: 2 // Allow processing 2 jobs at once
+    concurrency: 2,
   }
 );
 
-worker.on('completed', (job) => {
+worker.on("completed", (job) => {
   console.log(`[Job ${job.id}] Finished!`);
 });
 
-worker.on('failed', (job, err) => {
-  console.log(`[Job ${job?.id}] Failed with ${err.message}`);
+worker.on("failed", (job, err) => {
+  console.log(`[Job ${job?.id}] Failed with ${err?.message}`);
 });
 
-console.log('Worker is ready to accept jobs.');
+console.log("Worker is ready to accept jobs.");

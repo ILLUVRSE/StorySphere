@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { createClient } from "redis";
 import { Queue } from 'bullmq';
 import { config } from './config';
 
@@ -75,6 +76,51 @@ app.get('/api/v1/jobs/:id', async (req, res) => {
     console.error('Error fetching job:', error);
     res.status(500).json({ error: 'Failed to fetch job status' });
   }
+});
+
+// Job Logs SSE Endpoint
+app.get("/api/v1/jobs/:id/logs", async (req, res) => {
+  const jobId = String(req.params.id);
+  // Standard SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  // create a dedicated Redis subscriber for this connection
+  const subscriber = createClient({
+    socket: { host: config.redis.host, port: config.redis.port },
+  });
+
+  subscriber.on("error", (err) => {
+    console.error("Redis sub error:", err);
+  });
+
+  await subscriber.connect();
+
+  // send a small initial message to let client know we're connected
+  res.write(`data: ${JSON.stringify({ ts: new Date().toISOString(), message: "connected" })}\n\n`);
+
+  // subscribe and forward messages to SSE
+  const channel = `job:logs:${jobId}`;
+
+  // subscribe with a callback (works with node-redis v4)
+  await subscriber.subscribe(channel, (msg) => {
+    // msg is the published string (JSON)
+    res.write(`data: ${msg}\n\n`);
+  });
+
+  // cleanup on client disconnect
+  req.on("close", async () => {
+    try {
+      await subscriber.unsubscribe(channel);
+    } catch (e) {
+      // ignore
+    }
+    try {
+      await subscriber.quit();
+    } catch (e) {}
+  });
 });
 
 app.listen(config.port, () => {
