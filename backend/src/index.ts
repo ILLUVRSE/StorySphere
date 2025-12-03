@@ -3,6 +3,7 @@ import cors from 'cors';
 import { createClient } from 'redis';
 import { Queue } from 'bullmq';
 import { config } from './config';
+import { getJson } from "./storage";
 
 const app = express();
 app.use(cors());
@@ -75,6 +76,18 @@ app.get('/api/v1/jobs/:id', async (req, res) => {
   } catch (error) {
     console.error('Error fetching job:', error);
     res.status(500).json({ error: 'Failed to fetch job status' });
+  }
+});
+
+// Get Script Endpoint
+app.get("/api/v1/jobs/:id/script", async (req, res) => {
+  try {
+    const key = `scripts/${req.params.id}.json`;
+    const script = await getJson(key);
+    res.json(script);
+  } catch (err: any) {
+    console.error("Error fetching script:", err?.message || err);
+    res.status(404).json({ error: "Script not found" });
   }
 });
 

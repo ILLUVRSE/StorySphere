@@ -1,0 +1,9 @@
+OK
+1764734271.454978 [0 [::1]:59070] "evalsha" "f7a840e31d3fc86372a76a6c93ea17ec956c178c" "10" "bull:generation-queue:wait" "bull:generation-queue:active" "bull:generation-queue:prioritized" "bull:generation-queue:events" "bull:generation-queue:stalled" "bull:generation-queue:limiter" "bull:generation-queue:delayed" "bull:generation-queue:paused" "bull:generation-queue:meta" "bull:generation-queue:pc" "bull:generation-queue:" "1764734271454" "" "\xde\x00\x03\xa5token\xd9(47926382-75a6-4e50-be9d-5d097bf7455b:118\xaclockDuration\xcdu0\xa7limiter\xc0"
+1764734271.455109 [0 lua] "HEXISTS" "bull:generation-queue:meta" "paused"
+1764734271.455135 [0 lua] "ZRANGEBYSCORE" "bull:generation-queue:delayed" "0" "7228351575879680" "LIMIT" "0" "1000"
+1764734271.455147 [0 lua] "RPOPLPUSH" "bull:generation-queue:wait" "bull:generation-queue:active"
+1764734271.455155 [0 lua] "ZPOPMIN" "bull:generation-queue:prioritized"
+1764734271.455160 [0 lua] "DEL" "bull:generation-queue:pc"
+1764734271.455166 [0 lua] "ZRANGE" "bull:generation-queue:delayed" "0" "0" "WITHSCORES"
+1764734271.455669 [0 [::1]:59080] "brpoplpush" "bull:generation-queue:wait" "bull:generation-queue:active" "5"

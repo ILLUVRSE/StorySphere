@@ -1,5 +1,8 @@
 import { Worker, Job } from 'bullmq';
 import { config } from './config';
+import { generateScript } from "./ollama";
+import { putJson } from "./storage";
+import { logForJob } from "./logging";
 
 // Define the Job Data Interface
 interface GenerationJobData {
@@ -21,11 +24,21 @@ const worker = new Worker<GenerationJobData>(
     await job.updateProgress(0);
 
     try {
-      // Step 1: Script Generation (Mock/Placeholder)
-      console.log(`[Job ${job.id}] Step 1: Generating script with Ollama (Placeholder)...`);
-      await job.updateProgress(10);
-      // TODO: Call Ollama
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Step 1: Script Generation (Ollama)
+      await logForJob(job.id!, "Step 1: Generating script with Ollama...");
+      await job.updateProgress(5);
+      const script = await generateScript(job.data.prompt);
+
+      // Upload the script to MinIO for later retrieval
+      const scriptKey = `scripts/${job.id}.json`;
+      try {
+        await putJson(scriptKey, script);
+        await logForJob(job.id!, `Script uploaded to ${config.minio.bucket}/${scriptKey}`);
+      } catch (e: any) {
+        await logForJob(job.id!, `Warning: failed to upload script to MinIO: ${e?.message || e}`);
+      }
+      // Advance progress
+      await job.updateProgress(15);
 
       // Step 2: TTS (Mock/Placeholder)
       console.log(`[Job ${job.id}] Step 2: Generating Audio (Placeholder)...`);
