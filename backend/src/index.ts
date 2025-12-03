@@ -102,6 +102,23 @@ app.get('/api/v1/jobs/:id', async (req, res) => {
   }
 });
 
+// List Jobs Endpoint (for LiveLoop)
+app.get('/api/v1/jobs', async (req, res) => {
+  try {
+    const jobs = await generationQueue.getJobs(['completed'], 0, 49, false); // Newest first
+    const list = jobs.map(j => ({
+      id: j.id,
+      data: j.data,
+      result: j.returnvalue,
+      finishedOn: j.finishedOn
+    }));
+    res.json(list);
+  } catch (error) {
+    console.error('Error listing jobs:', error);
+    res.status(500).json({ error: 'Failed to list jobs' });
+  }
+});
+
 // Get Script Endpoint
 app.get("/api/v1/jobs/:id/script", async (req, res) => {
   try {
@@ -125,6 +142,20 @@ app.get("/api/v1/jobs/:id/audio", async (req, res) => {
   } catch (err) {
     console.error("Audio fetch error:", err);
     res.status(404).json({ error: "Audio not found" });
+  }
+});
+
+// Get Preview Video Endpoint
+app.get("/api/v1/jobs/:id/preview", async (req, res) => {
+  const key = `${req.params.id}/preview.mp4`;
+  try {
+    const buf = await getObjectBuffer(key);
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Length", String(buf.length));
+    res.end(buf);
+  } catch (err) {
+    console.error("Video fetch error:", err);
+    res.status(404).json({ error: "Video not found" });
   }
 });
 
