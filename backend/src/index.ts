@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { createClient } from 'redis';
 import { Queue } from 'bullmq';
 import { config } from './config';
 
@@ -74,6 +75,41 @@ app.get('/api/v1/jobs/:id', async (req, res) => {
   } catch (error) {
     console.error('Error fetching job:', error);
     res.status(500).json({ error: 'Failed to fetch job status' });
+  }
+});
+
+// Job Logs SSE Endpoint
+app.get('/api/v1/jobs/:id/logs', async (req, res) => {
+  const jobId = req.params.id;
+
+  // Set headers for Server-Sent Events
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const subscriber = createClient({
+    socket: { host: config.redis.host, port: config.redis.port },
+  });
+
+  try {
+    await subscriber.connect();
+
+    await subscriber.subscribe(`job:logs:${jobId}`, (message) => {
+      res.write(`data: ${message}\n\n`);
+    });
+
+    // Cleanup when client disconnects
+    req.on('close', async () => {
+      try {
+        await subscriber.disconnect();
+      } catch (err) {
+        console.error('Error disconnecting redis subscriber:', err);
+      }
+    });
+  } catch (error) {
+    console.error('Error initializing log stream:', error);
+    res.write(`data: ${JSON.stringify({ error: 'Log stream error' })}\n\n`);
+    res.end();
   }
 });
 
