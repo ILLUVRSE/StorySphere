@@ -12,14 +12,10 @@ export async function generateAudioForJob(jobId: string, scriptObj: any): Promis
   });
   const text = parts.join("\n\n").slice(0, 40000); // safe limit
 
-  // If no API key, produce a mock silent audio buffer and store it
   if (!config.eleven.apiKey) {
-    console.log(`[TTS] No ElevenLabs API key, using fallback silent audio for job ${jobId}`);
-    // Minimal silent MP3 frame
-    const silent = Buffer.from("//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq", "base64");
-    const key = `audio/${jobId}.mp3`;
-    await putObject(key, silent);
-    return key;
+    throw new Error(
+      "ElevenLabs API key is missing. Set ELEVEN_API_KEY to generate real audio."
+    );
   }
 
   // Call ElevenLabs
@@ -28,7 +24,7 @@ export async function generateAudioForJob(jobId: string, scriptObj: any): Promis
     console.log(`[TTS] Calling ElevenLabs for job ${jobId} (${text.length} chars)`);
     const resp = await axios.post(url, {
       text,
-      model_id: "eleven_monolingual_v1",
+      model_id: config.eleven.modelId,
       voice_settings: {
         stability: 0.5,
         similarity_boost: 0.5
@@ -48,16 +44,11 @@ export async function generateAudioForJob(jobId: string, scriptObj: any): Promis
     console.log(`[TTS] Generated and stored audio at ${key}`);
     return key;
   } catch (err: any) {
-    console.error(`[TTS] ElevenLabs call failed: ${err.message}`);
-    if (err.response) {
-      console.error(`[TTS] Response data:`, err.response.data?.toString());
-    }
-
-    // Fallback on error so we don't break the job
-    console.log(`[TTS] Using fallback audio due to error.`);
-    const silent = Buffer.from("//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq", "base64");
-    const key = `audio/${jobId}.mp3`;
-    await putObject(key, silent);
-    return key;
+    const detail =
+      err?.response?.data?.toString?.() ||
+      err?.message ||
+      "ElevenLabs request failed";
+    console.error(`[TTS] ElevenLabs call failed: ${detail}`);
+    throw new Error(detail);
   }
 }

@@ -34,7 +34,7 @@ app.post('/api/v1/generate', async (req, res) => {
       style: style || 'cinematic',
       voice: voice || 'default',
       language: language || 'en',
-      duration_target: duration_target || 60,
+      duration_target: duration_target || 7,
       produce_preview: produce_preview ?? true,
       created_at: new Date().toISOString()
     };

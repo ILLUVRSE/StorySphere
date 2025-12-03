@@ -4,6 +4,20 @@ Build a **local-first** personal studio that turns prompts into MP4s, hosts them
 
 ---
 
+# Real 7s pipeline (no mocks)
+
+The worker now requires real integrations end-to-end and will fail fast if any dependency is missing.
+
+1. Start/point to running services: `OLLAMA_HOST` (with `OLLAMA_MODEL`, e.g. `llama3.2`), `COMFYUI_HOST` (with `COMFYUI_CHECKPOINT` present in ComfyUI models), and ElevenLabs (`ELEVEN_API_KEY`, `ELEVEN_VOICE_ID`, optional `ELEVEN_MODEL_ID`). Defaults are wired in `docker-compose.yml`.
+2. Build + start: `docker-compose up --build`. The backend container now includes ffmpeg.
+3. POST `/api/v1/generate` with your prompt; `duration_target` defaults to 7 seconds. The worker:
+   - Calls Ollama for a scene script (no mock fallback).
+   - Calls ElevenLabs for audio (fails if no key).
+   - Calls ComfyUI to render a 1280x720 frame using the provided checkpoint/sampler.
+   - Normalizes audio to 7s and muxes with the rendered frame via ffmpeg to produce a real MP4 preview in MinIO.
+
+If any service is unreachable or misconfigured, the job fails instead of producing placeholder media.
+
 # Constraints & design principles
 
 * **Personal-use only**: minimal multi-tenant complexity, no monetization plumbing.

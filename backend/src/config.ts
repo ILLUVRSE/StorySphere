@@ -21,13 +21,18 @@ export const config = {
   },
   ollama: {
     host: process.env.OLLAMA_HOST || 'http://localhost:11434',
+    model: process.env.OLLAMA_MODEL || 'llama3.2',
   },
   comfyui: {
     host: process.env.COMFYUI_HOST || 'http://localhost:8188',
+    checkpoint: process.env.COMFYUI_CHECKPOINT || 'sd_xl_base_1.0.safetensors',
+    negativePrompt: process.env.COMFYUI_NEGATIVE_PROMPT || 'blurry, distorted, low quality, text overlay, watermark',
+    sampler: process.env.COMFYUI_SAMPLER || 'euler',
   },
   eleven: {
     apiKey: process.env.ELEVEN_API_KEY || "",
-    voiceId: process.env.ELEVEN_VOICE_ID || "alloy",
-    host: process.env.ELEVEN_HOST || "https://api.elevenlabs.io"
+    voiceId: process.env.ELEVEN_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
+    host: process.env.ELEVEN_HOST || "https://api.elevenlabs.io",
+    modelId: process.env.ELEVEN_MODEL_ID || "eleven_multilingual_v2"
   }
 };
