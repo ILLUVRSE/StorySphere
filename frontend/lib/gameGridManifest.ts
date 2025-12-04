@@ -246,6 +246,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Mirror Maze",
     emoji: "🪞",
     shortDesc: "Rotate mirrors to laser targets against the clock.",
+    playPath: "/games/mirror-maze/index.html",
     specs: {
       coreLoop: "Rotate mirror tiles to direct a laser to targets before time runs out.",
       hook: "Fast puzzle with combo scoring and moving targets.",
