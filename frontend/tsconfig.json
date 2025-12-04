@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@riverport/engine": ["../shared/riverport-engine/src"]
     }
   },
   "include": [
