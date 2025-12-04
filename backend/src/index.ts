@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import http from 'http';
+import { Server } from 'socket.io';
 import { createClient } from 'redis';
 import { Queue } from 'bullmq';
 import { randomUUID } from 'crypto';
@@ -7,10 +9,56 @@ import { config } from './config';
 import { getJson, getObjectBuffer, listObjects, getPresignedUrl } from "./storage";
 import { validateTimelineSchema } from './types/timeline';
 import { db } from './db';
+import { MatchManager } from './matches/MatchManager';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const server = http.createServer(app);
+
+// Socket.IO setup
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Allow all for MVP
+    methods: ["GET", "POST"]
+  }
+});
+
+const matchManager = new MatchManager(io);
+matchManager.start();
+
+io.on('connection', (socket) => {
+  console.log(`Socket connected: ${socket.id}`);
+
+  socket.on('join_match', ({ matchId, playerId }) => {
+    const success = matchManager.joinMatch(socket, matchId, playerId);
+    if (success) {
+      socket.emit('match_joined', { matchId });
+      console.log(`Socket ${socket.id} joined match ${matchId}`);
+    } else {
+      socket.emit('error', { message: 'Match not found' });
+    }
+  });
+
+  socket.on('game_input', (data) => {
+    // data: { matchId, input }
+    if (data.matchId && data.input) {
+      matchManager.handleInput(data.matchId, data.input);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`Socket disconnected: ${socket.id}`);
+    // Cleanup logic in MatchManager if needed
+  });
+});
+
+// Expose internal match creation for testing (TEMPORARY)
+app.post('/api/v1/internal/create_match', async (req, res) => {
+    const id = await matchManager.createMatch();
+    res.json({ matchId: id });
+});
 
 // Job Queue
 const generationQueue = new Queue('generation-queue', {
@@ -301,6 +349,6 @@ app.get('/api/v1/jobs/:id/logs', async (req, res) => {
   }
 });
 
-app.listen(config.port, () => {
+server.listen(config.port, () => {
   console.log(`StorySphere API running on port ${config.port}`);
 });
