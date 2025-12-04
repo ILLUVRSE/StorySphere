@@ -386,6 +386,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Checkers",
     emoji: "⭕",
     shortDesc: "Quick checkers with variant power tiles.",
+    playPath: "/games/checkers/index.html",
     specs: {
       coreLoop: "Fast checkers matches on standard or variant boards with timed turns.",
       hook: "Classic strategy with modern variants like double-jump bonuses or asymmetric tiles.",

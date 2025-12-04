@@ -1,8 +1,0 @@
-127.0.0.1 - - [04/Dec/2025 17:52:54] "GET /games/blackjack/index.html HTTP/1.1" 200 -
-127.0.0.1 - - [04/Dec/2025 17:52:54] "GET /games/blackjack/main.js HTTP/1.1" 200 -
-127.0.0.1 - - [04/Dec/2025 17:52:54] "GET /games/blackjack/renderer.js HTTP/1.1" 200 -
-127.0.0.1 - - [04/Dec/2025 17:52:54] "GET /games/blackjack/utils.js HTTP/1.1" 200 -
-127.0.0.1 - - [04/Dec/2025 17:52:54] "GET /games/blackjack/bridge.js HTTP/1.1" 200 -
-127.0.0.1 - - [04/Dec/2025 17:52:54] "GET /games/blackjack/input.js HTTP/1.1" 200 -
-127.0.0.1 - - [04/Dec/2025 17:52:54] "GET /games/blackjack/engine.js HTTP/1.1" 200 -
-127.0.0.1 - - [04/Dec/2025 17:52:54] "GET /games/blackjack/sfx.js HTTP/1.1" 200 -
