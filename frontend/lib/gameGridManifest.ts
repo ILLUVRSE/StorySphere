@@ -204,6 +204,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Mine Maze",
     emoji: "⛏️",
     shortDesc: "Reveal treasure while avoiding mines with limited moves.",
+    playPath: "/games/mine-maze/index.html",
     specs: {
       coreLoop: "Reveal tiles to collect treasure but avoid mines; limited moves.",
       hook: "Risk/reward as you push farther for bigger rewards.",
