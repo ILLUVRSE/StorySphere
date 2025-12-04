@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Grid Tycoon</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #002620; /* Very Dark Teal */
+            color: #fdfbf7;
+            overflow: hidden;
+            font-family: monospace;
+            touch-action: none; /* Prevent pull-to-refresh */
+        }
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        canvas {
+            display: block;
+            flex-grow: 1;
+        }
+        #palette {
+            height: 60px;
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            padding: 5px;
+            z-index: 10;
+        }
+        .palette-btn {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 10px;
+            cursor: pointer;
+            font-family: inherit;
+            border-radius: 4px;
+        }
+        .palette-btn.active {
+            border-color: #ffd700;
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="palette"></div>
+    </div>
+    <script type="module" src="./main.js"></script>
+</body>
+</html>

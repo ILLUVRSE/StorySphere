@@ -260,6 +260,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Grid Tycoon",
     emoji: "🏙️",
     shortDesc: "Tile city-building against timed demands.",
+    playPath: "/games/grid-tycoon/index.html",
     specs: {
       coreLoop: "Place buildings on tiles to generate income and survive waves of demands.",
       hook: "Arcade time-attack where you optimize layout for score.",
