@@ -93,6 +93,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Rogue Grid",
     emoji: "🎲",
     shortDesc: "Quick roguelike rooms with simple turn-based moves.",
+    playPath: "/games/rogue-grid/index.html",
     specs: {
       coreLoop: "Quick roguelike runs across compact rooms; each run is 3–10 minutes.",
       hook: "Permadeath but with short loops and powerful unlocks.",
