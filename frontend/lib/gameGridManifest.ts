@@ -344,6 +344,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Indian Poker",
     emoji: "🃏",
     shortDesc: "See others' cards and bluff without seeing yours.",
+    playPath: "/games/indian-poker/index.html",
     specs: {
       coreLoop: "Short multiplayer bluffing rounds where you see opponents' cards but not your own.",
       hook: "Pure social psychology with fast pacing and readable tells.",
