@@ -232,6 +232,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Grid Gladiators",
     emoji: "🛡️",
     shortDesc: "Arena duels with traps, cover, and bounce tiles.",
+    playPath: "/games/grid-gladiators/index.html",
     specs: {
       coreLoop: "Short arena combat with movement and attack tiles plus powerups.",
       hook: "Tiles enforce tactical choices: cover, traps, bounce pads.",

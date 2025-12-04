@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Grid Gladiators</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #001014;
+            overflow: hidden;
+            touch-action: none;
+            color: #eceff1;
+            font-family: monospace;
+        }
+        canvas {
+            display: block;
+        }
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            pointer-events: none;
+            opacity: 0.5;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game-canvas"></canvas>
+    <div id="controls">
+        P1: WASD + Space (Ab1) + Shift (Ab2) <br>
+        P2: Arrows + Enter (Ab1) + Ctrl (Ab2)
+    </div>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
