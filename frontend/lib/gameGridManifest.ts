@@ -162,6 +162,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Pixel Puck",
     emoji: "🏒",
     shortDesc: "Fast 1v1 air-hockey with bumper tiles.",
+    playPath: "/games/pixel-puck/index.html",
     specs: {
       coreLoop: "Fast 1v1 air-hockey on a grid with bumpers and tile effects.",
       hook: "Spawnable obstacles and special tiles that alter puck physics.",
