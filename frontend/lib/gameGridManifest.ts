@@ -16,6 +16,20 @@ export type GameGridSpec = {
 
 export const gameGridManifest: GameGridSpec[] = [
   {
+    slug: "riverport-baseball",
+    title: "Riverport Baseball League",
+    emoji: "⚾",
+    shortDesc: "Sandlot baseball with middle-aged washouts. Watch your knees!",
+    playPath: "/games/riverport-baseball/index.html",
+    specs: {
+      coreLoop: "Pitch and Bat in a 3-inning sandlot showdown.",
+      hook: "Manage 'washout' stamina; big bellies hit harder but run slower.",
+      fit: "Mouse-based arcade timing.",
+      complexity: "Medium",
+      retention: "High score runs and procedural character discovery.",
+    },
+  },
+  {
     slug: "nebula-runner",
     title: "Nebula Runner",
     emoji: "✨",
