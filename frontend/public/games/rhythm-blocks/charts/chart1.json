@@ -1,0 +1,13 @@
+{
+  "title": "Tutorial Chart",
+  "bpm": 100,
+  "lengthMs": 10000,
+  "notes": [
+    {"timeMs": 1000, "lane": 0},
+    {"timeMs": 2000, "lane": 1},
+    {"timeMs": 3000, "lane": 2},
+    {"timeMs": 4000, "lane": 3},
+    {"timeMs": 5000, "lane": 4},
+    {"timeMs": 6000, "lane": 5}
+  ]
+}

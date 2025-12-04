@@ -190,6 +190,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Rhythm Blocks",
     emoji: "🎵",
     shortDesc: "Tap grid notes in time for combos.",
+    playPath: "/games/rhythm-blocks/index.html",
     specs: {
       coreLoop: "Notes scroll across a grid; tap tiles in time to score combos.",
       hook: "Procedural or mapped tracks with combo multipliers for grid patterns.",
