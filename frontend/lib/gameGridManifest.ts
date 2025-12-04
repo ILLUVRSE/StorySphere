@@ -218,6 +218,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Terraform",
     emoji: "🌱",
     shortDesc: "Plant and merge crops before the timer expires.",
+    playPath: "/games/terraform/index.html",
     specs: {
       coreLoop: "Fast farming loop: plant, combine crops on tiles, harvest before timer.",
       hook: "Merge tiles to create higher-value crops and chain harvests.",
