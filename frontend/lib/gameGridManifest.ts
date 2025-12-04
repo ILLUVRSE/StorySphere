@@ -372,6 +372,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Blackjack",
     emoji: "🂡",
     shortDesc: "Snappy 21 hands with arcade modifiers.",
+    playPath: "/games/blackjack/index.html",
     specs: {
       coreLoop: "Classic 21 with quick hands against a dealer or short tournaments.",
       hook: "Optional side-bets and tile-based modifiers like wild ace tiles.",
