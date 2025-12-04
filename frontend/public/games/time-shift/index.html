@@ -1,0 +1,203 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Time Shift</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #004d40;
+            color: #fdfbf7;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            touch-action: none;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            box-shadow: 0 0 30px rgba(0,230,118,0.1);
+        }
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 77, 64, 0.95);
+            z-index: 10;
+            pointer-events: auto;
+        }
+        .hidden { display: none !important; }
+
+        h1 { color: #ffd700; font-size: 40px; margin-bottom: 20px; text-transform: uppercase; text-shadow: 2px 2px #000; }
+        p { font-size: 18px; margin-bottom: 30px; text-align: center; max-width: 600px; line-height: 1.5; }
+
+        button {
+            background: #009688;
+            color: #fff;
+            border: 2px solid #ffd700;
+            padding: 15px 40px;
+            font-size: 20px;
+            cursor: pointer;
+            font-family: inherit;
+            text-transform: uppercase;
+            box-shadow: 4px 4px 0 rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+        }
+        button:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 rgba(0,0,0,0.3); }
+        button:hover { background: #00796b; }
+
+        #ui-layer {
+            background: none;
+            pointer-events: none;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 5;
+        }
+
+        .hud-top {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .hud-box {
+            background: rgba(0,0,0,0.5);
+            padding: 10px 15px;
+            border: 1px solid #009688;
+            color: #ffd700;
+            font-size: 20px;
+        }
+
+        #hint-text {
+            position: absolute;
+            bottom: 120px;
+            width: 100%;
+            text-align: center;
+            color: #b2dfdb;
+            font-style: italic;
+            font-size: 16px;
+            pointer-events: none;
+        }
+
+        /* Mobile Touch Controls */
+        #mobile-controls {
+            display: none;
+        }
+        @media (hover: none) and (pointer: coarse) {
+            #mobile-controls {
+                display: block;
+                position: absolute;
+                bottom: 20px;
+                width: 100%;
+                height: 180px;
+                z-index: 20;
+                pointer-events: auto;
+            }
+            #dpad {
+                position: absolute;
+                left: 20px;
+                bottom: 20px;
+                width: 150px;
+                height: 150px;
+            }
+            .d-btn {
+                position: absolute;
+                width: 50px;
+                height: 50px;
+                background: rgba(255,255,255,0.1);
+                border: 1px solid rgba(255,255,255,0.3);
+            }
+            #touch-up { top: 0; left: 50px; }
+            #touch-down { bottom: 0; left: 50px; }
+            #touch-left { top: 50px; left: 0; }
+            #touch-right { top: 50px; right: 0; }
+
+            #touch-rewind {
+                position: absolute;
+                right: 20px;
+                bottom: 40px;
+                width: 100px;
+                height: 100px;
+                background: rgba(255, 215, 0, 0.2);
+                border: 2px solid #ffd700;
+                border-radius: 50%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                font-weight: bold;
+                color: #ffd700;
+            }
+
+            #hint-text { bottom: 210px; }
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="screen hidden">
+        <div class="hud-top">
+            <div id="level-info" class="hud-box">LEVEL 1</div>
+            <div id="timer" class="hud-box">00:00.00</div>
+        </div>
+        <div id="hint-text"></div>
+
+        <div id="mobile-controls">
+            <div id="dpad">
+                <div id="touch-up" class="d-btn"></div>
+                <div id="touch-down" class="d-btn"></div>
+                <div id="touch-left" class="d-btn"></div>
+                <div id="touch-right" class="d-btn"></div>
+            </div>
+            <div id="touch-rewind">REWIND</div>
+        </div>
+    </div>
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="screen">
+        <h1>Time Shift</h1>
+        <p>Navigate the grid. Avoid hazards.<br>Use <b>SPACE / REWIND</b> to reverse time and fix mistakes.</p>
+        <button id="start-btn">Start Mission</button>
+    </div>
+
+    <!-- Fail Screen -->
+    <div id="fail-screen" class="screen hidden">
+        <h1 style="color: #ff5252;">Temporal Failure</h1>
+        <p>You were eliminated.</p>
+        <button id="restart-btn">Try Again</button>
+    </div>
+
+    <!-- Results Screen -->
+    <div id="results-screen" class="screen hidden">
+        <h1>Mission Complete</h1>
+        <p>Final Time: <span id="final-time" style="color:#ffd700"></span></p>
+        <p>Score: <span id="final-score" style="color:#00e676"></span></p>
+        <button id="next-btn" style="display:none">Next</button>
+        <button onclick="location.reload()">Play Again</button>
+    </div>
+</div>
+
+<script type="module" src="./main.js"></script>
+
+</body>
+</html>

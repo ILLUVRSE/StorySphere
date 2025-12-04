@@ -274,6 +274,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Time Shift",
     emoji: "⏪",
     shortDesc: "Rewind tile states to dodge hazards.",
+    playPath: "/games/time-shift/index.html",
     specs: {
       coreLoop: "Manipulate tiles by rewinding short time windows to solve hazards.",
       hook: "One simple rewind button replays tiles' last few states for high-skill play.",
