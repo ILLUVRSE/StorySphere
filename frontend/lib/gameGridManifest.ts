@@ -288,6 +288,7 @@ export const gameGridManifest: GameGridSpec[] = [
     title: "Spy Grid",
     emoji: "🕵️",
     shortDesc: "Plan steps to sneak past guards for loot.",
+    playPath: "/games/spy-grid/index.html",
     specs: {
       coreLoop: "Plan moves to sneak past patrolling guards and steal items.",
       hook: "One-screen heists with predictable patrol patterns for leaderboard stealth.",
