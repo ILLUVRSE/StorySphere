@@ -1,10 +1,22 @@
+
 FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN apk add --no-cache ffmpeg && npm install
+# Copy dependency definitions
+COPY package.json package-lock.json ./
 
+# Install dependencies
+RUN npm install
+
+# Copy source code
 COPY . .
 
+# Build TypeScript
+RUN npm run build
+
+# Expose port
 EXPOSE 3000
+
+# Start command
+CMD ["npm", "start"]

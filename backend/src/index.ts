@@ -10,10 +10,14 @@ import { getJson, getObjectBuffer, listObjects, getPresignedUrl } from "./storag
 import { validateTimelineSchema } from './types/timeline';
 import { db } from './db';
 import { MatchManager } from './matches/MatchManager';
+import { setupMatchSocket } from './ws/matchSocket';
+import apiRoutes from './routes';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+app.use('/api', apiRoutes);
 
 const server = http.createServer(app);
 
@@ -28,31 +32,12 @@ const io = new Server(server, {
 const matchManager = new MatchManager(io);
 matchManager.start();
 
-io.on('connection', (socket) => {
-  console.log(`Socket connected: ${socket.id}`);
+// Use new namespaced socket handler
+setupMatchSocket(io, matchManager);
 
-  socket.on('join_match', ({ matchId, playerId }) => {
-    const success = matchManager.joinMatch(socket, matchId, playerId);
-    if (success) {
-      socket.emit('match_joined', { matchId });
-      console.log(`Socket ${socket.id} joined match ${matchId}`);
-    } else {
-      socket.emit('error', { message: 'Match not found' });
-    }
-  });
-
-  socket.on('game_input', (data) => {
-    // data: { matchId, input }
-    if (data.matchId && data.input) {
-      matchManager.handleInput(data.matchId, data.input);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    console.log(`Socket disconnected: ${socket.id}`);
-    // Cleanup logic in MatchManager if needed
-  });
-});
+// Inject MatchManager into new Services
+import { LeagueService } from './services/league';
+export const leagueService = new LeagueService(matchManager);
 
 // Expose internal match creation for testing (TEMPORARY)
 app.post('/api/v1/internal/create_match', async (req, res) => {

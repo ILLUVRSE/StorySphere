@@ -1,17 +1,22 @@
-# frontend/Dockerfile
-FROM node:20-alpine
+
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package.json & install first for better caching
-COPY package*.json ./
-RUN npm ci --prefer-offline --no-audit
+# Copy dependency definitions
+COPY package.json package-lock.json ./
 
-# Copy the rest of the frontend
+# Install dependencies
+RUN npm install
+
+# Copy source code
 COPY . .
 
-# Expose Next default dev port
+# Build Next.js
+RUN npm run build
+
+# Expose port
 EXPOSE 3000
 
-# Use the dev command so docker-compose can run the dev server
-CMD ["npm", "run", "dev"]
+# Start command
+CMD ["npm", "start"]
