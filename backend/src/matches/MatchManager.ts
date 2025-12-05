@@ -39,17 +39,28 @@ export class MatchManager {
         }
     }
 
-    async createMatch(userId?: string): Promise<string> {
+    async createMatch(userId?: string, seed?: string): Promise<string> {
         const id = uuidv4();
-        const match = new Match(id);
+        const matchSeed = seed || id; // Default to ID if no seed provided
+
+        // Mock Rosters for MVP / Testing
+        const mockPlayer = (id: string, name: string): any => ({
+            id, teamId: 'mock-team', stats: { name, power: 5, speed: 5, fielding: 5, arm: 5, knees: 0, stamina: 1, skinColor: '#fff', shirtColor: '#fff', hatColor: '#000' },
+            fatigue: 0, injury: null
+        });
+
+        const homeRoster = Array.from({length: 9}, (_, i) => mockPlayer(`h${i}`, `Home Player ${i}`));
+        const awayRoster = Array.from({length: 9}, (_, i) => mockPlayer(`a${i}`, `Away Player ${i}`));
+
+        const match = new Match(id, matchSeed, homeRoster, awayRoster);
         this.matches.set(id, match);
 
         // Persist to DB
         if (db.isReady()) {
             try {
                 await db.query(
-                    `INSERT INTO matches (id, status, created_by, created_at) VALUES ($1, $2, $3, NOW())`,
-                    [id, 'running', userId || null]
+                    `INSERT INTO matches (id, status, created_by, seed, created_at) VALUES ($1, $2, $3, $4, NOW())`,
+                    [id, 'running', userId || null, matchSeed]
                 );
             } catch (err) {
                 console.error("Failed to persist match creation:", err);
@@ -57,6 +68,26 @@ export class MatchManager {
         }
 
         return id;
+    }
+
+    simulateMatchToCompletion(matchId: string) {
+        const match = this.matches.get(matchId);
+        if (!match) return;
+
+        let safety = 0;
+        // Increase safety limit for longer games if needed, but 10000 should cover 3 innings.
+        // User suggested 10000 for 7 innings.
+        while (match.engine.state.phase !== 'GAME_OVER' && safety < 10000) {
+            match.tick();
+            safety++;
+        }
+
+        if (safety >= 10000) {
+            console.warn(`Simulation timed out for match ${matchId} at tick ${match.engine.state.tick}. Phase: ${match.engine.state.phase}, Outs: ${match.engine.state.outs}, Inning: ${match.engine.state.inning}`);
+        }
+
+        console.log(`Simulation finished. Log length: ${match.engine.state.eventLog.length}`);
+        return match.engine.state.eventLog;
     }
 
     joinMatch(socket: Socket, matchId: string, playerId: string) {

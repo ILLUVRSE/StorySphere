@@ -1,4 +1,4 @@
-import { GameEngine, GameInput, GameState } from '../../../shared/riverport-engine/src';
+import { GameEngine, GameInput, GameState, Player } from '../../../shared/riverport-engine/src';
 
 export class Match {
     id: string;
@@ -6,9 +6,9 @@ export class Match {
     clients: Map<string, string>; // socketId -> playerId
     lastSnapshot: GameState;
 
-    constructor(id: string) {
+    constructor(id: string, seed: string, homeRoster: Player[], awayRoster: Player[]) {
         this.id = id;
-        this.engine = new GameEngine(Date.now()); // Deterministic seed per match
+        this.engine = new GameEngine(id, seed, homeRoster, awayRoster);
         this.clients = new Map();
         this.lastSnapshot = this.engine.getSnapshot();
     }
