@@ -1,0 +1,3 @@
+
+> storysphere-backend@0.1.0 start
+> node dist/backend/src/index.js
