@@ -7,3 +7,7 @@ minio.log
 
 # Ignore Yugioh MP4s
 /frontend/public/*.mp4
+
+# Ignore bulk media libraries
+/frontend/public/Movies/
+/frontend/public/Series/

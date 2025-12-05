@@ -1,0 +1,8 @@
+services:
+  redis:
+    # Remove host port binding to avoid conflicts with host Redis
+    ports: []
+
+  postgres:
+    # Remove host port binding to avoid conflicts with host Postgres
+    ports: []

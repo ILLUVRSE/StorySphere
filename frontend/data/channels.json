@@ -1,0 +1,48 @@
+[
+  {
+    "id": 1,
+    "name": "illuvrse1",
+    "label": "Series Marathon",
+    "description": "Starts 3:00 PM anchored loop of full series.",
+    "placeholder": false,
+    "anchor": {
+      "type": "fixedTime",
+      "time": "15:00"
+    }
+  },
+  {
+    "id": 2,
+    "name": "illuvrse2",
+    "label": "Coming Soon",
+    "description": "Reserved for new lineup.",
+    "placeholder": true
+  },
+  {
+    "id": 3,
+    "name": "illuvrse3",
+    "label": "Coming Soon",
+    "description": "Reserved for new lineup.",
+    "placeholder": true
+  },
+  {
+    "id": 4,
+    "name": "illuvrse4",
+    "label": "Coming Soon",
+    "description": "Reserved for new lineup.",
+    "placeholder": true
+  },
+  {
+    "id": 5,
+    "name": "illuvrse5",
+    "label": "Coming Soon",
+    "description": "Reserved for new lineup.",
+    "placeholder": true
+  },
+  {
+    "id": 6,
+    "name": "illuvrse6",
+    "label": "Coming Soon",
+    "description": "Reserved for new lineup.",
+    "placeholder": true
+  }
+]
