@@ -52,15 +52,17 @@ const lobby = document.getElementById('lobby');
 const startBtn = document.getElementById('start-btn');
 const modeSelect = document.getElementById('mode-select');
 const playerSelect = document.getElementById('player-select');
+const classSelect = document.getElementById('class-select');
 
 startBtn.addEventListener('click', () => {
     const seed = generateSeed();
     const mode = modeSelect.value;
     const players = parseInt(playerSelect.value);
+    const p1Class = classSelect.value;
 
     lobby.classList.add('hidden');
 
-    engine.init(seed, mode, players, true);
+    engine.init(seed, mode, players, true, p1Class);
     isRunning = true;
     lastTime = 0;
 
