@@ -1,11 +1,11 @@
 // Wheel configuration
 export const WHEEL_SECTORS = [
     { type: 'CASH', value: 500, color: '#f44336' }, // Red
-    { type: 'CASH', value: 300, color: '#ff9800' }, // Orange
+    { type: 'JACKPOT', value: 0, label: 'JACKPOT', color: '#ffd700', textColor: '#000' }, // Gold - Jackpot
     { type: 'CASH', value: 200, color: '#ffeb3b' }, // Yellow
     { type: 'LOSE_TURN', value: 0, label: 'LOSE', color: '#ffffff' }, // White
     { type: 'CASH', value: 400, color: '#4caf50' }, // Green
-    { type: 'CASH', value: 200, color: '#2196f3' }, // Blue
+    { type: 'MYSTERY', value: 0, label: 'MYSTERY', color: '#000000', textColor: '#fff' }, // Mystery
     { type: 'CASH', value: 900, color: '#3f51b5' }, // Indigo
     { type: 'BANKRUPT', value: 0, label: 'BANK', color: '#000000', textColor: '#ffffff' }, // Black
     { type: 'CASH', value: 600, color: '#9c27b0' }, // Purple
@@ -23,13 +23,21 @@ export const CONSONANTS = "BCDFGHJKLMNPQRSTVWXYZ".split('');
 export const VOWEL_COST = 250;
 
 export class WheelEngine {
-    constructor(puzzles, seed) {
+    constructor(puzzles, seed, playerNames = ['PLAYER 1']) {
         this.puzzles = puzzles;
         this.rng = seed; // Function
         this.currentPuzzleIndex = 0;
-        this.score = 0; // Total accumulated score
-        this.roundCash = 0; // Current round cash
-        this.spinsLeft = 50; // Total spins allowed per session (optional constraint, or infinite)
+
+        // Players Setup
+        this.players = playerNames.map(name => ({
+            name: name,
+            roundCash: 0,
+            bank: 0, // Total score banked from previous rounds
+            inventory: [], // 'FREE_SPIN' tokens
+        }));
+        this.currentPlayerIndex = 0;
+        this.jackpot = 5000; // Progressive Jackpot
+
         this.maxPuzzles = 5;
 
         this.state = 'SPIN'; // SPIN, SPINNING, RESULT, GUESS_CONSONANT, BUY_ACTION, SOLVE_INPUT, ROUND_END, GAME_OVER
@@ -41,15 +49,31 @@ export class WheelEngine {
         this.wheelVelocity = 0;
         this.currentSector = null;
 
-        this.message = "SPIN THE WHEEL!";
+        // Single frame event flag for renderer to consume
+        this.lastEffect = null;
+
+        this.message = `${this.getCurrentPlayer().name}, SPIN!`;
 
         this.loadNextPuzzle();
+    }
+
+    getCurrentPlayer() {
+        return this.players[this.currentPlayerIndex];
+    }
+
+    nextPlayer() {
+        this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
+        this.message = `${this.getCurrentPlayer().name}'S TURN`;
+        this.state = 'SPIN';
     }
 
     loadNextPuzzle() {
         if (this.currentPuzzleIndex >= this.maxPuzzles) {
             this.state = 'GAME_OVER';
-            this.message = "GAME OVER! Final Score: " + this.score;
+            // Determine winner
+            const winner = this.players.reduce((prev, current) => (prev.bank > current.bank) ? prev : current);
+            this.message = `GAME OVER! ${winner.name} WINS $${winner.bank}!`;
+            this.lastEffect = { type: 'PARTICLES', color: '#ffd700' }; // Winner confetti
             return;
         }
 
@@ -61,13 +85,16 @@ export class WheelEngine {
         };
         this.revealed = this.puzzle.text.split('').map(c => !/[A-Z]/.test(c)); // Auto reveal non-letters
         this.guessedLetters.clear();
-        this.roundCash = 0;
+
+        // Reset round cash for everyone? No, usually rules vary but let's keep round cash per puzzle.
+        // Actually standard rules: Round cash is lost if you don't solve. Only solver banks.
+        this.players.forEach(p => p.roundCash = 0);
+
         this.state = 'SPIN';
-        this.message = "Category: " + this.puzzle.category;
+        this.message = `${this.getCurrentPlayer().name}, SPIN! (${this.puzzle.category})`;
     }
 
     createPuzzleGrid(text) {
-        // Simple logic to wrap text into lines (max width approx 12-14 chars)
         const words = text.split(' ');
         let lines = [];
         let currentLine = "";
@@ -86,10 +113,8 @@ export class WheelEngine {
 
     spin() {
         if (this.state !== 'SPIN') return;
-        // Initial velocity randomized slightly but deterministic if we used the RNG (but for animation feeling we usually add some flux)
-        // For gameplay fairness, we can determine result first, but for simple arcade, physics simulation is fine.
-        // Let's use physics for visual fun.
         this.wheelVelocity = 0.3 + (this.rng() * 0.2); // Random velocity
+        this.jackpot += 100; // Grow jackpot
         this.state = 'SPINNING';
         this.message = "ROUND AND ROUND...";
     }
@@ -107,22 +132,9 @@ export class WheelEngine {
     }
 
     resolveSpin() {
-        // Normalize angle
-        const angle = this.wheelAngle % (Math.PI * 2);
-        // Calculate sector index. 0 is at 3 o'clock usually in canvas arc.
-        // We render 0 at 3 o'clock (0 rad). pointer is at 12 o'clock (-PI/2) or 270 deg.
-        // Actually simplest is: Index = Math.floor(TotalSectors * (1 - (Angle / 2PI))) % TotalSectors
-        // Need to calibrate based on renderer.
-        // Let's assume standard math:
         const sectorSize = (Math.PI * 2) / WHEEL_SECTORS.length;
-        // Pointer at top (3*PI/2 or -PI/2).
-        // If wheel rotates clockwise (angle increases), the sector under the pointer changes counter-index-wise.
-
-        // Effective angle under pointer
         let effectiveAngle = (this.wheelAngle + Math.PI / 2) % (Math.PI * 2);
-        // Invert for index mapping
         effectiveAngle = (Math.PI * 2) - effectiveAngle;
-
         const index = Math.floor(effectiveAngle / sectorSize) % WHEEL_SECTORS.length;
         this.currentSector = WHEEL_SECTORS[index];
 
@@ -130,24 +142,75 @@ export class WheelEngine {
     }
 
     handleSectorResult(sector) {
+        const player = this.getCurrentPlayer();
+
         if (sector.type === 'BANKRUPT') {
-            this.roundCash = 0;
+            // Check for shield? (Not implemented yet, maybe FREE SPIN saves? No, usually separate)
+            player.roundCash = 0;
             this.message = "BANKRUPT!";
             this.state = 'RESULT';
-            setTimeout(() => { this.state = 'SPIN'; }, 1500);
+            this.lastEffect = { type: 'SHAKE', amount: 20 };
+            setTimeout(() => {
+                this.nextPlayer();
+            }, 1500);
             return { type: 'BANKRUPT' };
+
         } else if (sector.type === 'LOSE_TURN') {
+            if (player.inventory.includes('FREE_SPIN')) {
+                // Ask to use? For Arcade speed, let's auto-use or just burn it.
+                // Let's burn it automatically to save turn.
+                const idx = player.inventory.indexOf('FREE_SPIN');
+                player.inventory.splice(idx, 1);
+                this.message = "USED FREE SPIN!";
+                this.state = 'SPIN'; // Spin again same player
+                this.lastEffect = { type: 'PARTICLES', color: '#8bc34a' }; // Green save
+                return { type: 'SAVED' };
+            }
             this.message = "LOST A TURN!";
             this.state = 'RESULT';
-             setTimeout(() => { this.state = 'SPIN'; }, 1500);
+             setTimeout(() => {
+                 this.nextPlayer();
+             }, 1500);
             return { type: 'LOSE_TURN' };
+
         } else if (sector.type === 'FREE_SPIN') {
-             this.message = "FREE SPIN!";
-             // For MVP, just treat as spin again, or maybe logic similar to cash but no value.
-             // Let's treat it as a turn keeper.
-             this.state = 'GUESS_CONSONANT';
-             this.message = "PICK A CONSONANT";
+             this.message = "FREE SPIN TOKEN!";
+             player.inventory.push('FREE_SPIN');
+             // Still need to guess a consonant usually, or spin again?
+             // Standard rules: Pick up token, then guess consonant.
+             // Let's simplify: You get the token and keep turn (Spin again).
+             this.state = 'SPIN';
+             this.lastEffect = { type: 'PARTICLES', color: '#8bc34a' };
              return { type: 'FREE' };
+
+        } else if (sector.type === 'MYSTERY') {
+             // 50/50 Chance
+             const isGood = this.rng() > 0.5;
+             if (isGood) {
+                 this.message = "$10,000 MYSTERY! PICK CONSONANT";
+                 sector.tempValue = 10000; // Hacky way to pass value
+                 this.state = 'GUESS_CONSONANT';
+                 this.lastEffect = { type: 'PARTICLES', color: '#ffd700' };
+                 return { type: 'CASH', value: 10000 };
+             } else {
+                 player.roundCash = 0;
+                 this.message = "MYSTERY BANKRUPT!";
+                 this.state = 'RESULT';
+                 this.lastEffect = { type: 'SHAKE', amount: 20 };
+                 setTimeout(() => { this.nextPlayer(); }, 1500);
+                 return { type: 'BANKRUPT' };
+             }
+
+        } else if (sector.type === 'JACKPOT') {
+             this.message = `JACKPOT $${this.jackpot}! PICK CONSONANT`;
+             // If they guess right, they get jackpot added to round cash?
+             // Or they just get $500 per letter and chance to win jackpot on solve?
+             // Arcade simplification: Treat as high value cash wedge for this turn equal to current Jackpot.
+             sector.tempValue = this.jackpot;
+             this.state = 'GUESS_CONSONANT';
+             this.lastEffect = { type: 'PARTICLES', color: '#ffd700' };
+             return { type: 'CASH', value: this.jackpot };
+
         } else {
             // CASH
             this.message = `$${sector.value} - PICK A CONSONANT`;
@@ -158,6 +221,8 @@ export class WheelEngine {
 
     guessLetter(letter) {
         if (this.state !== 'GUESS_CONSONANT' && this.state !== 'BUY_ACTION') return;
+
+        const player = this.getCurrentPlayer();
 
         if (this.guessedLetters.has(letter)) {
             this.message = "ALREADY GUESSED!";
@@ -183,15 +248,26 @@ export class WheelEngine {
 
         if (count > 0) {
             if (!isVowel) {
-                this.roundCash += (this.currentSector ? (this.currentSector.value || 0) : 0) * count;
+                // Determine value
+                let val = 0;
+                if (this.currentSector.type === 'MYSTERY') val = 10000; // Fixed 10k if good
+                else if (this.currentSector.type === 'JACKPOT') val = this.jackpot;
+                else val = this.currentSector.value || 0;
+
+                player.roundCash += val * count;
                 this.message = `FOUND ${count} ${letter}'s! SPIN, BUY, OR SOLVE.`;
-                this.state = 'SPIN'; // Can spin again
+                this.state = 'SPIN'; // Keep turn
+
+                // Small particle burst for correct letter
+                this.lastEffect = { type: 'PARTICLES', color: '#fff', count: 10 };
             } else {
+                // Vowel bought (cost already deducted)
                 this.message = `FOUND ${count} ${letter}'s!`;
-                this.state = 'SPIN';
+                this.state = 'SPIN'; // Keep turn
+                this.lastEffect = { type: 'PARTICLES', color: '#fff', count: 10 };
             }
 
-            // Check full solve auto? No, usually you have to solve. But for arcade speed, let's auto-solve if complete.
+            // Auto-solve check
             if (this.checkComplete()) {
                 this.solveSuccess();
             }
@@ -199,23 +275,25 @@ export class WheelEngine {
         } else {
             // Wrong guess
             this.message = `NO ${letter}!`;
-            this.state = 'SPIN'; // In single player, just next spin (maybe penalty?)
-            // For arcade difficulty, maybe deduct cash?
-            // Let's keep it simple: just lose turn (spin again).
+            this.state = 'RESULT';
+            setTimeout(() => {
+                this.nextPlayer();
+            }, 1000);
             return false;
         }
     }
 
     buyVowel() {
+        const player = this.getCurrentPlayer();
         if (this.state !== 'SPIN') {
              this.message = "CAN ONLY BUY BEFORE SPINNING";
              return;
         }
-        if (this.roundCash < VOWEL_COST) {
+        if (player.roundCash < VOWEL_COST) {
             this.message = "NEED $" + VOWEL_COST;
             return;
         }
-        this.roundCash -= VOWEL_COST;
+        player.roundCash -= VOWEL_COST;
         this.state = 'BUY_ACTION';
         this.message = "PICK A VOWEL";
     }
@@ -230,18 +308,26 @@ export class WheelEngine {
             return true;
         } else {
             this.message = "WRONG ANSWER!";
-            this.state = 'SPIN';
+            this.state = 'RESULT';
+            this.lastEffect = { type: 'SHAKE', amount: 10 };
+            setTimeout(() => {
+                this.nextPlayer();
+            }, 1000);
             return false;
         }
     }
 
     solveSuccess() {
-        this.score += this.roundCash;
-        // Bonus for solving early?
-        this.score += 1000;
+        const player = this.getCurrentPlayer();
+        player.bank += player.roundCash;
+        // Minimum house limit? Usually $1000 minimum for solve
+        if (player.roundCash < 1000) player.bank += (1000 - player.roundCash);
+
         this.currentPuzzleIndex++;
         this.state = 'ROUND_END';
-        this.message = "PUZZLE SOLVED! +$" + this.roundCash;
+        this.message = `${player.name} SOLVES IT!`;
+        this.lastEffect = { type: 'PARTICLES', color: '#ffd700', count: 50 }; // BIG WIN
+
         setTimeout(() => {
             this.loadNextPuzzle();
         }, 3000);

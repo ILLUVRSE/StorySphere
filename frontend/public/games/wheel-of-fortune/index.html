@@ -39,15 +39,80 @@
             text-align: center;
             z-index: 10;
         }
+        #setup-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .btn {
+            background: #ffd700;
+            color: black;
+            border: none;
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            margin: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .btn:hover {
+            background: #ffeb3b;
+        }
+        .input-row {
+            margin: 10px;
+        }
+        input {
+            padding: 10px;
+            font-size: 18px;
+            text-align: center;
+        }
+        h1 { margin-bottom: 30px; color: #ffd700; text-shadow: 0 0 10px #ff9800; }
     </style>
 </head>
 <body>
     <div id="game-container">
         <div id="canvas-wrapper">
             <canvas id="game-canvas"></canvas>
+
+            <div id="setup-overlay">
+                <h1>WHEEL OF FORTUNE</h1>
+                <div id="player-count-select">
+                    <h2>How many players?</h2>
+                    <button class="btn" onclick="setupPlayers(1)">1 Player</button>
+                    <button class="btn" onclick="setupPlayers(2)">2 Players</button>
+                    <button class="btn" onclick="setupPlayers(3)">3 Players</button>
+                </div>
+                <div id="player-name-input" style="display:none;">
+                    <h2>Enter Names</h2>
+                    <div id="name-inputs"></div>
+                    <button class="btn" onclick="startGame()">START GAME</button>
+                </div>
+            </div>
+
         </div>
         <div id="ui-container"></div>
     </div>
     <script type="module" src="main.js"></script>
+    <script>
+        // Global setup helpers
+        window.setupPlayers = function(count) {
+            document.getElementById('player-count-select').style.display = 'none';
+            document.getElementById('player-name-input').style.display = 'block';
+            const container = document.getElementById('name-inputs');
+            container.innerHTML = '';
+            for(let i=1; i<=count; i++) {
+                const div = document.createElement('div');
+                div.className = 'input-row';
+                div.innerHTML = `<input type="text" id="p${i}" value="PLAYER ${i}" placeholder="Name ${i}">`;
+                container.appendChild(div);
+            }
+        };
+        // startGame handled in main.js
+    </script>
 </body>
 </html>
