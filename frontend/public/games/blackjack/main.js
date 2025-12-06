@@ -1,19 +1,22 @@
-import { Deck, calculateHandValue, isBlackjack, isBusted } from './engine.js';
+import { Deck, calculateHandValue, isBlackjack, isBusted, canSplit } from './engine.js';
 import { Renderer } from './renderer.js';
 import { InputController } from './input.js';
 import { AudioController } from './sfx.js';
 import { Bridge } from './bridge.js';
-import { mulberry32, cyrb128 } from './utils.js';
+import { mulberry32, cyrb128, TweenManager, Easing } from './utils.js';
 
 const STATE = {
     INIT: 'INIT',
     BETTING: 'BETTING',
     DEALING: 'DEALING',
+    INSURANCE: 'INSURANCE',
     PLAYER_TURN: 'PLAYER_TURN',
     DEALER_TURN: 'DEALER_TURN',
     RESOLVE: 'RESOLVE',
     GAME_OVER: 'GAME_OVER'
 };
+
+const CHIP_VALUES = [10, 50, 100, 500];
 
 class Game {
     constructor() {
@@ -21,14 +24,20 @@ class Game {
         this.renderer = new Renderer(this.canvas);
         this.audio = new AudioController();
         this.bridge = new Bridge();
+        this.tweens = new TweenManager();
 
         // Game State
         this.state = STATE.INIT;
         this.chips = 1000;
-        this.bet = 0;
+        this.currentBet = 0;
+
+        // Multi-hand support
         this.deck = null;
-        this.playerHand = [];
+        this.hands = []; // Array of { cards: [], bet: 0, status: 'PLAYING', result: null, id: int }
+        this.currentHandIndex = 0;
+
         this.dealerHand = [];
+        this.insuranceBet = 0;
         this.message = "Tap to Start";
 
         // Input
@@ -44,7 +53,7 @@ class Game {
     init() {
         // Parse seed
         const urlParams = new URLSearchParams(window.location.search);
-        const seedStr = urlParams.get('seed') || new Date().toISOString().split('T')[0]; // Daily default
+        const seedStr = urlParams.get('seed') || new Date().toISOString().split('T')[0];
         const seedHash = cyrb128(seedStr);
         const rand = mulberry32(seedHash[0]);
 
@@ -52,7 +61,18 @@ class Game {
         this.state = STATE.BETTING;
         this.message = "Place Your Bet";
 
+        // Initial setup
+        this.resetHands();
+
         this.bridge.sendReady();
+    }
+
+    resetHands() {
+        this.hands = [];
+        this.dealerHand = [];
+        this.currentHandIndex = 0;
+        this.insuranceBet = 0;
+        this.currentBet = 0;
     }
 
     loop(timestamp) {
@@ -66,228 +86,376 @@ class Game {
     }
 
     update(dt) {
-        // Dealer AI logic could be ticked here if we wanted delays
+        this.tweens.update(dt);
     }
 
     draw() {
         this.renderer.clear();
 
+        // Pass relevant data to renderer
+        const context = {
+            state: this.state,
+            chips: this.chips,
+            bet: this.currentBet, // Current accum bet during betting phase
+            message: this.message,
+            hands: this.hands,
+            dealerHand: this.dealerHand,
+            currentHandIndex: this.currentHandIndex,
+            insuranceBet: this.insuranceBet
+        };
+
         if (this.state === STATE.BETTING) {
-            this.renderer.drawHUD(this.state, this.chips, this.bet, "Place Bet");
-            this.renderer.drawControls(this.state);
+            this.renderer.drawHUD(context);
+            this.renderer.drawBettingControls(CHIP_VALUES, this.chips, this.currentBet);
         } else {
-            this.renderer.drawHUD(this.state, this.chips, this.bet, this.message);
+            this.renderer.drawHUD(context);
+            this.renderer.drawTable(context);
 
-            // Draw Hands
-            this.renderer.drawHand(this.dealerHand, this.canvas.width/2, this.renderer.layout.dealerY);
-            this.renderer.drawHand(this.playerHand, this.canvas.width/2, this.renderer.layout.playerY);
+            const activeHand = this.hands[this.currentHandIndex];
+            // Determine available actions
+            let actions = {
+                canHit: false,
+                canStand: false,
+                canDouble: false,
+                canSplit: false,
+                canInsurance: this.state === STATE.INSURANCE
+            };
 
-            // Hand Values
-            // Player
-            if (this.playerHand.length > 0) {
-                 const pVal = calculateHandValue(this.playerHand);
-                 this.renderer.ctx.fillStyle = '#fff';
-                 this.renderer.ctx.fillText(pVal, this.canvas.width/2, this.renderer.layout.playerY + 110);
-            }
-            // Dealer (hide if card down)
-            if (this.dealerHand.length > 0) {
-                let dVal = "?";
-                if (this.dealerHand.every(c => c.faceUp)) {
-                    dVal = calculateHandValue(this.dealerHand);
-                }
-                this.renderer.ctx.fillText(dVal, this.canvas.width/2, this.renderer.layout.dealerY + 110);
+            if (this.state === STATE.PLAYER_TURN && activeHand) {
+                actions.canHit = true;
+                actions.canStand = true;
+                actions.canDouble = activeHand.cards.length === 2 && this.chips >= activeHand.bet;
+                actions.canSplit = canSplit(activeHand.cards) && this.chips >= activeHand.bet;
             }
 
-            this.renderer.drawControls(this.state, this.canDouble());
+            this.renderer.drawControls(this.state, actions);
         }
-    }
-
-    canDouble() {
-        return this.state === STATE.PLAYER_TURN && this.playerHand.length === 2 && this.chips >= this.bet;
     }
 
     handleInput(pos) {
         this.audio.ensureContext();
 
-        // Button Hit Tests
-        const y = this.renderer.layout.uiY;
-        const btnW = 100;
-        const btnH = 40;
-        const gap = 20;
-
+        // Delegate to specific handlers based on state
         if (this.state === STATE.BETTING) {
-            // BET 10 Button
-            const bx = this.canvas.width/2 - btnW/2;
-            if (this.hitTest(pos, bx, y, btnW, btnH)) {
-                this.placeBet(10);
-            }
+            this.handleBettingInput(pos);
         } else if (this.state === STATE.PLAYER_TURN) {
-            let x = this.canvas.width/2 - btnW - gap;
-            // Hit
-            if (this.hitTest(pos, x, y, btnW, btnH)) {
-                this.hit();
-            }
-            x += btnW + gap;
-            // Stand
-            if (this.hitTest(pos, x, y, btnW, btnH)) {
-                this.stand();
-            }
-            // Double
-            if (this.canDouble()) {
-                x += btnW + gap;
-                if (this.hitTest(pos, x, y, btnW, btnH)) {
-                    this.doubleDown();
+            this.handlePlayerInput(pos);
+        } else if (this.state === STATE.INSURANCE) {
+            this.handleInsuranceInput(pos);
+        } else if (this.state === STATE.RESOLVE || this.state === STATE.GAME_OVER) {
+            this.handleResolveInput(pos);
+        }
+    }
+
+    handleBettingInput(pos) {
+        // Chip buttons
+        const chipAction = this.renderer.hitTestChips(pos, CHIP_VALUES);
+        if (chipAction) {
+            if (chipAction === 'clear') {
+                this.chips += this.currentBet;
+                this.currentBet = 0;
+            } else if (chipAction === 'deal') {
+                if (this.currentBet > 0) this.startRound();
+            } else {
+                // chip value
+                if (this.chips >= chipAction) {
+                    this.chips -= chipAction;
+                    this.currentBet += chipAction;
                 }
             }
-        } else if (this.state === STATE.RESOLVE) {
-             const bx = this.canvas.width/2 - btnW/2;
-             if (this.hitTest(pos, bx, y, btnW, btnH)) {
-                 this.nextHand();
-             }
-        } else if (this.state === STATE.GAME_OVER) {
-             // Maybe restart?
         }
     }
 
-    hitTest(pos, x, y, w, h) {
-        return pos.x >= x && pos.x <= x + w && pos.y >= y && pos.y <= y + h;
+    handlePlayerInput(pos) {
+        const action = this.renderer.hitTestControls(pos);
+        if (!action) return;
+
+        const hand = this.hands[this.currentHandIndex];
+
+        if (action === 'HIT') this.hit(hand);
+        if (action === 'STAND') this.stand(hand);
+        if (action === 'DOUBLE') this.doubleDown(hand);
+        if (action === 'SPLIT') this.splitHand(hand);
     }
 
-    placeBet(amount) {
-        if (this.chips < amount) {
-            // Not enough chips
-            if (this.chips > 0) amount = this.chips; // All in
-            else return; // Broke
+    handleInsuranceInput(pos) {
+        const action = this.renderer.hitTestControls(pos); // Should return YES/NO
+        if (action === 'YES') {
+            this.buyInsurance();
+        } else if (action === 'NO') {
+            this.declineInsurance();
         }
-        this.bet = amount;
-        this.chips -= amount;
-        this.startHand();
     }
 
-    async startHand() {
+    handleResolveInput(pos) {
+        const action = this.renderer.hitTestControls(pos); // Next Hand
+        if (action === 'NEXT') {
+            this.nextHand();
+        }
+    }
+
+    async startRound() {
         this.state = STATE.DEALING;
         this.message = "";
-        this.playerHand = [];
-        this.dealerHand = [];
 
-        if (this.deck.cards.length < 10) {
+        // Initialize first hand
+        this.hands = [{
+            cards: [],
+            bet: this.currentBet,
+            status: 'PLAYING',
+            id: 1
+        }];
+        this.currentHandIndex = 0;
+        this.currentBet = 0; // Reset accumulator
+
+        if (this.deck.cards.length < 15) {
             this.deck.reset();
             this.deck.shuffle();
         }
 
-        // Deal initial cards
-        this.audio.playDeal();
-        this.playerHand.push(this.deck.draw());
-        await this.wait(200);
-        this.dealerHand.push(this.deck.draw());
-        await this.wait(200);
-        this.playerHand.push(this.deck.draw());
-        await this.wait(200);
-        const hiddenCard = this.deck.draw();
-        hiddenCard.faceUp = false;
-        this.dealerHand.push(hiddenCard);
+        // Deal sequence
+        await this.dealCard(this.hands[0], true);
+        await this.dealCardToDealer(true);
+        await this.dealCard(this.hands[0], true);
+        await this.dealCardToDealer(false); // Hole card
 
-        // Check for instant blackjack
-        if (isBlackjack(this.playerHand)) {
-            // Check dealer blackjack (reveal first)
+        // Check Insurance
+        const dealerUpCard = this.dealerHand[0];
+        if (dealerUpCard.rank === 'A' && this.chips >= Math.floor(this.hands[0].bet / 2)) {
+            this.state = STATE.INSURANCE;
+            this.message = "Insurance?";
+            return;
+        }
+
+        // Check Dealer Blackjack (Peek)
+        if (isBlackjack(this.dealerHand)) {
+            // Reveal hole card immediately if player doesn't have blackjack (or even if they do)
             this.dealerHand[1].faceUp = true;
-            if (isBlackjack(this.dealerHand)) {
-                this.resolve('PUSH');
-            } else {
-                this.resolve('BLACKJACK');
-            }
+            this.resolveRound();
         } else {
+             // Check Player Blackjack
+            if (isBlackjack(this.hands[0].cards)) {
+                this.hands[0].status = 'BLACKJACK';
+                this.resolveRound();
+            } else {
+                this.state = STATE.PLAYER_TURN;
+            }
+        }
+    }
+
+    async dealCard(hand, faceUp = true) {
+        const card = this.deck.draw();
+        card.faceUp = faceUp;
+
+        // Setup Animation (handled by renderer if we set props)
+        // For now, assume renderer uses card.x/y
+        // We'll simulate delay here
+        this.audio.playDeal();
+        hand.cards.push(card);
+        await this.wait(300);
+    }
+
+    async dealCardToDealer(faceUp = true) {
+        const card = this.deck.draw();
+        card.faceUp = faceUp;
+        this.audio.playDeal();
+        this.dealerHand.push(card);
+        await this.wait(300);
+    }
+
+    // --- Actions ---
+
+    hit(hand) {
+        this.dealCard(hand).then(() => {
+            if (isBusted(hand.cards)) {
+                hand.status = 'BUST';
+                this.message = "Bust!";
+                this.advanceHand();
+            }
+        });
+    }
+
+    stand(hand) {
+        hand.status = 'STAND';
+        this.advanceHand();
+    }
+
+    async doubleDown(hand) {
+        if (this.chips < hand.bet) return; // Should not happen due to button check
+        this.chips -= hand.bet;
+        hand.bet *= 2;
+
+        await this.dealCard(hand);
+
+        if (isBusted(hand.cards)) {
+            hand.status = 'BUST';
+        } else {
+            hand.status = 'STAND';
+        }
+        this.advanceHand();
+    }
+
+    async splitHand(hand) {
+        // Validation handled by button visibility
+        this.chips -= hand.bet;
+
+        const cardToMove = hand.cards.pop();
+        const newHand = {
+            cards: [cardToMove],
+            bet: hand.bet,
+            status: 'PLAYING',
+            id: this.hands.length + 1
+        };
+
+        // Insert new hand after current hand
+        this.hands.splice(this.currentHandIndex + 1, 0, newHand);
+
+        // Deal 1 card to current hand
+        await this.dealCard(hand);
+
+        // If split aces, usually just one card.
+        // Simplified rule: Allow play on split aces for now unless strict rules required.
+        // Standard Arcade: Allow normal play.
+
+        // Note: New hand (index+1) needs a card too, but we deal that when we get to it?
+        // OR dealing logic usually fills both immediately?
+        // Standard: Deal to Hand 1. Play Hand 1. Then Deal to Hand 2. Play Hand 2.
+
+        // Check for Blackjack on the split hand (usually counts as 21, not BJ, but here we treat simple)
+    }
+
+    buyInsurance() {
+        const bet = Math.floor(this.hands[0].bet / 2);
+        this.insuranceBet = bet;
+        this.chips -= bet;
+        this.resolveInsurance();
+    }
+
+    declineInsurance() {
+        this.resolveInsurance();
+    }
+
+    async resolveInsurance() {
+        // Check dealer hole card for 10/Face
+        if (isBlackjack(this.dealerHand)) {
+            this.dealerHand[1].faceUp = true;
+            this.state = STATE.RESOLVE;
+
+            // Insurance Pays 2:1
+            if (this.insuranceBet > 0) {
+                this.chips += this.insuranceBet * 3; // Return bet + 2x winnings
+                this.message = "Insurance Pays!";
+            } else {
+                this.message = "Dealer Blackjack";
+            }
+            // Main hand loses (unless BJ push)
+            this.resolveRound();
+        } else {
+            // Insurance loses
+            this.message = "Nobody Home";
+            await this.wait(500);
             this.state = STATE.PLAYER_TURN;
         }
     }
 
-    hit() {
-        this.playerHand.push(this.deck.draw());
-        this.audio.playDeal();
-        if (isBusted(this.playerHand)) {
-            this.resolve('BUST');
-        }
-    }
+    advanceHand() {
+        // Move to next hand if playing multiple
+        if (this.currentHandIndex < this.hands.length - 1) {
+            this.currentHandIndex++;
+            const hand = this.hands[this.currentHandIndex];
 
-    stand() {
-        this.state = STATE.DEALER_TURN;
-        this.playDealer();
-    }
-
-    doubleDown() {
-        this.chips -= this.bet;
-        this.bet *= 2;
-        this.playerHand.push(this.deck.draw());
-        this.audio.playDeal();
-
-        if (isBusted(this.playerHand)) {
-            this.resolve('BUST');
+            // If this is a split hand that needs a second card (from the split logic earlier)
+            if (hand.cards.length === 1) {
+                this.dealCard(hand).then(() => {
+                    this.state = STATE.PLAYER_TURN;
+                });
+            } else {
+                this.state = STATE.PLAYER_TURN;
+            }
         } else {
-            this.stand();
+            // All hands done
+            this.state = STATE.DEALER_TURN;
+            this.playDealer();
         }
     }
 
     async playDealer() {
-        // Reveal hole card
+        // Skip dealer turn if all hands busted
+        const allBusted = this.hands.every(h => h.status === 'BUST');
+        if (allBusted) {
+            this.resolveRound();
+            return;
+        }
+
         this.dealerHand[1].faceUp = true;
         await this.wait(500);
 
         while (calculateHandValue(this.dealerHand) < 17) {
-            this.dealerHand.push(this.deck.draw());
-            this.audio.playDeal();
-            await this.wait(500);
+            await this.dealCardToDealer();
         }
 
-        const dVal = calculateHandValue(this.dealerHand);
-        const pVal = calculateHandValue(this.playerHand);
-
-        if (dVal > 21) {
-            this.resolve('WIN');
-        } else if (dVal > pVal) {
-            this.resolve('LOSE');
-        } else if (dVal < pVal) {
-            this.resolve('WIN');
-        } else {
-            this.resolve('PUSH');
-        }
+        this.resolveRound();
     }
 
-    resolve(result) {
+    resolveRound() {
         this.state = STATE.RESOLVE;
-        if (result === 'BLACKJACK') {
-            this.message = "BLACKJACK!";
-            this.chips += Math.floor(this.bet * 2.5);
-            this.audio.playWin();
-        } else if (result === 'WIN') {
-            this.message = "YOU WIN!";
-            this.chips += this.bet * 2;
-            this.audio.playWin();
-        } else if (result === 'PUSH') {
-            this.message = "PUSH";
-            this.chips += this.bet;
-            this.audio.playPush();
-        } else if (result === 'LOSE') {
-            this.message = "DEALER WINS";
-            this.audio.playLose();
-        } else if (result === 'BUST') {
-            this.message = "BUST!";
-            this.audio.playLose();
-        }
+        const dVal = calculateHandValue(this.dealerHand);
+        const dealerBust = dVal > 21;
+        const dealerBJ = isBlackjack(this.dealerHand);
 
-        this.bet = 0;
+        let totalWin = 0;
 
-        // Send score update
+        this.hands.forEach(hand => {
+            const pVal = calculateHandValue(hand.cards);
+            const playerBJ = isBlackjack(hand.cards) && hand.cards.length === 2 && this.hands.length === 1;
+            // Note: Split hands usually don't count as natural Blackjack. Length check implies splits.
+            // Actually, if we split, length is 2, but hands.length > 1.
+
+            if (hand.status === 'BUST') {
+                hand.result = 'LOSE';
+            } else if (dealerBJ) {
+                if (playerBJ) {
+                    hand.result = 'PUSH';
+                    this.chips += hand.bet;
+                } else {
+                    hand.result = 'LOSE';
+                }
+            } else if (playerBJ) {
+                // Dealer no BJ
+                hand.result = 'BLACKJACK';
+                this.chips += Math.floor(hand.bet * 2.5);
+                totalWin += Math.floor(hand.bet * 2.5);
+            } else if (dealerBust) {
+                hand.result = 'WIN';
+                this.chips += hand.bet * 2;
+                totalWin += hand.bet * 2;
+            } else if (pVal > dVal) {
+                hand.result = 'WIN';
+                this.chips += hand.bet * 2;
+                totalWin += hand.bet * 2;
+            } else if (pVal === dVal) {
+                hand.result = 'PUSH';
+                this.chips += hand.bet;
+            } else {
+                hand.result = 'LOSE';
+            }
+        });
+
+        if (totalWin > 0) this.audio.playWin();
+        else if (this.hands.some(h => h.result === 'PUSH')) this.audio.playPush();
+        else this.audio.playLose();
+
+        // Bridge score
         this.bridge.sendScore({
             score: this.chips,
-            meta: {
-                finalChips: this.chips,
-                handsPlayed: 0 // TODO: Track hands
-            }
+            meta: { finalChips: this.chips }
         });
 
         if (this.chips <= 0) {
             this.message = "GAME OVER";
             this.state = STATE.GAME_OVER;
+        } else {
+            this.message = "Round Over";
         }
     }
 
@@ -295,8 +463,7 @@ class Game {
         if (this.chips <= 0) return;
         this.state = STATE.BETTING;
         this.message = "Place Bet";
-        this.playerHand = [];
-        this.dealerHand = [];
+        this.resetHands();
     }
 
     wait(ms) {
@@ -304,7 +471,6 @@ class Game {
     }
 }
 
-// Start
 window.onload = () => {
     new Game();
 };
