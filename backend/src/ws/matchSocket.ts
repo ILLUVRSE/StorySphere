@@ -45,12 +45,34 @@ export function setupMatchSocket(io: Server, matchManager: MatchManager) {
 
             socket.emit('match_joined', { matchId, role: role || 'SPECTATOR' });
 
-            // Send Full Replay (History)
-            // Fetch from DB
+            // Send Lobby State immediately
+            const lobbyState = matchManager.getLobbyState(matchId);
+            if (lobbyState) {
+                socket.emit('lobby_state', lobbyState);
+            }
+
+            // Send Full Replay (History) if match in progress
             if (db.isReady()) {
                 const logs = await db.query('SELECT * FROM event_logs WHERE match_id = $1 ORDER BY seq ASC', [matchId]);
-                socket.emit('replay', logs.rows);
+                if (logs.rows.length > 0) {
+                     socket.emit('replay', logs.rows);
+                }
             }
+        });
+
+        socket.on('submit_lineup', ({ matchId, battingOrder, bench, startingPitcher }) => {
+            if (!socket.user) return;
+            matchManager.handleLineupSubmission(matchId, socket.user.id, { battingOrder, bench, startingPitcher });
+        });
+
+        socket.on('update_mode', ({ matchId, mode }) => {
+            if (!socket.user) return;
+            matchManager.handleModeUpdate(matchId, socket.user.id, mode);
+        });
+
+        socket.on('start_match', ({ matchId }) => {
+             if (!socket.user) return;
+             matchManager.startMatch(matchId, socket.user.id);
         });
 
         socket.on('submit_input', ({ matchId, action }) => {
@@ -65,6 +87,7 @@ export function setupMatchSocket(io: Server, matchManager: MatchManager) {
              // Handle disconnect? MatchManager has leaveMatch but we don't track socketId->matchId strictly here without a map.
              // We can let the connection map in MatchManager linger or clean up if we tracked it.
              // For MVP, memory leak is minor if server restarts daily.
+             // Ideally we should track which match the socket was in.
         });
     });
 }
