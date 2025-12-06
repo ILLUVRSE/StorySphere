@@ -409,4 +409,18 @@ export const gameGridManifest: GameGridSpec[] = [
       retention: "Ranked ladder, casual matches, seasonal boards and piece skins, puzzle challenges.",
     },
   },
+  {
+    slug: "glimpse",
+    title: "Glimpse",
+    emoji: "👁️",
+    shortDesc: "See others' sigils, bluff your own.",
+    playPath: "/games/glimpse/index.html",
+    specs: {
+      coreLoop: "Trick-taking (Hearts) where everyone has a hidden multiplier on their forehead.",
+      hook: "You see everyone's multiplier but yours; bluffing and deduction are key.",
+      fit: "Clean card table with clear readable data.",
+      complexity: "Medium.",
+      retention: "High skill ceiling in deduction and bluffing.",
+    },
+  },
 ];
