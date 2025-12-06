@@ -13,7 +13,8 @@ export class Renderer {
       slow: '#5d4037',
       fast: '#004d40',
       trap: '#b71c1c',
-      bounce: '#ff6f00'
+      bounce: '#ff6f00',
+      ice: '#81d4fa'
     };
   }
 
@@ -59,6 +60,7 @@ export class Renderer {
         else if (tile.type === 3) this.ctx.fillStyle = this.colors.fast;
         else if (tile.type === 4) this.ctx.fillStyle = this.colors.trap;
         else if (tile.type === 5) this.ctx.fillStyle = this.colors.bounce;
+        else if (tile.type === 6) this.ctx.fillStyle = this.colors.ice;
 
         this.ctx.fillRect(px, py, this.tileSize, this.tileSize);
 
@@ -76,6 +78,21 @@ export class Renderer {
       }
     }
 
+    // Draw KotH Hill
+    if (state.mode === 'koth' && state.hill) {
+        const hx = state.hill.x * this.tileSize;
+        const hy = state.hill.y * this.tileSize;
+        const hr = state.hill.radius * this.tileSize;
+
+        this.ctx.beginPath();
+        this.ctx.arc(hx, hy, hr, 0, Math.PI*2);
+        this.ctx.fillStyle = 'rgba(255, 215, 0, 0.3)'; // Gold area
+        this.ctx.fill();
+        this.ctx.lineWidth = 4;
+        this.ctx.strokeStyle = '#ffd700';
+        this.ctx.stroke();
+    }
+
     // Draw Powerups
     state.powerups.forEach(p => {
         const px = p.x * this.tileSize; // center is handled by drawing circle
@@ -91,7 +108,15 @@ export class Renderer {
 
         this.ctx.beginPath();
         this.ctx.arc(cx, cy, r, 0, Math.PI*2);
-        this.ctx.fillStyle = p.type === 'speed' ? '#00e676' : '#2979ff';
+
+        let color = '#fff';
+        let icon = '?';
+        if (p.type === 'speed') { color = '#00e676'; icon = '⚡'; }
+        else if (p.type === 'shield') { color = '#2979ff'; icon = '🛡️'; }
+        else if (p.type === 'invis') { color = '#b0bec5'; icon = '👻'; }
+        else if (p.type === 'teleport') { color = '#ab47bc'; icon = '🌀'; }
+
+        this.ctx.fillStyle = color;
         this.ctx.fill();
         this.ctx.lineWidth = 2;
         this.ctx.strokeStyle = '#fff';
@@ -102,7 +127,7 @@ export class Renderer {
         this.ctx.font = `${this.tileSize*0.4}px Arial`;
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
-        this.ctx.fillText(p.type === 'speed' ? '⚡' : '🛡️', cx, cy);
+        this.ctx.fillText(icon, cx, cy);
     });
 
     // Draw Players
@@ -114,6 +139,12 @@ export class Renderer {
         const cx = e.x * this.tileSize;
         const cy = e.y * this.tileSize;
         const r = this.tileSize * 0.35;
+
+        // Ghost check
+        const isGhost = e.effects.some(ef => ef.type === 'invis');
+        if (isGhost) {
+            this.ctx.globalAlpha = 0.4;
+        }
 
         // Glow for IT
         if (e.isIt) {
@@ -149,6 +180,8 @@ export class Renderer {
              this.ctx.lineWidth = 2;
              this.ctx.stroke();
         }
+
+        this.ctx.globalAlpha = 1.0;
     });
 
     this.ctx.restore();
@@ -161,14 +194,19 @@ export class Renderer {
       this.ctx.fillStyle = '#fff';
       this.ctx.font = '20px sans-serif';
       this.ctx.textAlign = 'center';
-      this.ctx.fillText(`Time: ${Math.ceil(state.timeRemaining)}`, this.width / 2, 30);
+      let title = `Time: ${Math.ceil(state.timeRemaining)}`;
+      if (state.mode === 'koth') title += " - KotH";
+      this.ctx.fillText(title, this.width / 2, 30);
 
       // Scores
       // Simple Corner lists
       this.ctx.textAlign = 'left';
       state.entities.forEach((e, i) => {
           const score = state.scores[e.id];
-          const txt = `P${e.id+1}: ${score.tags} Tags`;
+          let txt = `P${e.id+1}: ${score.tags} Tags`;
+          if (state.mode === 'koth') {
+             txt = `P${e.id+1}: ${Math.floor(score.hillTime)}s`;
+          }
           this.ctx.fillStyle = e.color;
           this.ctx.fillText(txt, 10, 30 + i*25);
       });

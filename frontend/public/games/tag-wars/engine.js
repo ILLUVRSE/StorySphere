@@ -11,7 +11,7 @@ export class Engine {
     this.h = 7;
     this.rng = null;
     this.tagRadius = 0.8;
-    // Tile types: 0=floor, 1=wall, 2=slow, 3=fast, 4=trap, 5=bounce
+    // Tile types: 0=floor, 1=wall, 2=slow, 3=fast, 4=trap, 5=bounce, 6=ice
   }
 
   init(seed, mode = 'ffa', playerCount = 2, fillBots = true) {
@@ -23,7 +23,7 @@ export class Engine {
       entities: [],
       powerups: [],
       particles: [],
-      mode: mode, // 'ffa' or 'infection'
+      mode: mode, // 'ffa', 'infection', 'koth'
       timeRemaining: 60, // seconds
       maxTime: 60,
       gameOver: false,
@@ -33,6 +33,13 @@ export class Engine {
         survivors: [],
         zombies: [],
         startTime: 0
+      },
+      hill: { // For KotH
+        x: 4.5,
+        y: 3.5,
+        radius: 1.5,
+        timer: 0,
+        moveInterval: 15
       }
     };
 
@@ -56,8 +63,8 @@ export class Engine {
         else if (r < 0.15) type = 2; // slow
         else if (r < 0.18) type = 3; // fast
         else if (r < 0.20) type = 5; // bounce
-        // Traps (4) are rare or player placed? Let's add some procedural traps
         else if (r < 0.22) type = 4; // trap
+        else if (r < 0.25) type = 6; // ice
 
         // Clear spawns and center for fairness
         if ((x < 2 && y < 2) || (x > 6 && y > 4) || (x===4 && y===3)) type = 0;
@@ -94,6 +101,7 @@ export class Engine {
             tags: 0,
             timeSurvived: 0,
             infections: 0,
+            hillTime: 0,
             wasIt: e.isIt
         };
     });
@@ -135,6 +143,11 @@ export class Engine {
       return;
     }
 
+    // Update Hill (KotH)
+    if (this.state.mode === 'koth') {
+       this.updateHill(dt);
+    }
+
     // Process Inputs
     this.applyInputs(inputState);
 
@@ -172,33 +185,77 @@ export class Engine {
 
   updatePhysics(dt) {
       this.state.entities.forEach(e => {
-          // Calculate effective speed based on tile
           const tx = Math.floor(e.x);
           const ty = Math.floor(e.y);
-          let tileSpeedMult = 1.0;
+          let tileType = 0;
 
           if (tx >= 0 && tx < this.w && ty >= 0 && ty < this.h) {
               const tile = this.state.grid[ty][tx];
-              if (tile.type === 2) tileSpeedMult = 0.6; // Slow
-              if (tile.type === 3) tileSpeedMult = 1.5; // Fast
-              if (tile.type === 4 && tile.timer > 0) tileSpeedMult = 0; // Trap active
+              tileType = tile.type;
+              // Trap active check handled in speed mult logic below?
+              // Actually if tile.timer > 0 it is active
+              if (tileType === 4 && tile.timer > 0) tileType = 4;
           }
 
-          // Apply Powerup Speed Mods
+          const isIce = (tileType === 6);
+
+          // Calculate Target Velocity based on Input
+          let tileSpeedMult = 1.0;
+          if (tileType === 2) tileSpeedMult = 0.6; // Slow
+          if (tileType === 3) tileSpeedMult = 1.5; // Fast
+          if (tileType === 4 && this.state.grid[ty][tx].timer > 0) tileSpeedMult = 0; // Trap stopped
+
           const speedEffect = e.effects.find(ef => ef.type === 'speed');
           const boost = speedEffect ? 1.5 : 1.0;
 
-          const speed = e.speedBase * e.speedMod * tileSpeedMult * boost * dt;
+          const maxSpeed = e.speedBase * e.speedMod * tileSpeedMult * boost;
 
-          let nx = e.x + e.input.x * speed;
-          let ny = e.y + e.input.y * speed;
+          const targetVx = e.input.x * maxSpeed;
+          const targetVy = e.input.y * maxSpeed;
+
+          // Acceleration / Friction
+          // If on Ice, low friction (drift). Else high friction (snappy).
+          const accel = isIce ? 0.3 : 20.0;
+
+          // Linear interpolation towards target velocity
+          // v = v + (target - v) * (1 - exp(-accel * dt)) // Frame independent lerp roughly
+          // Or simple Euler:
+          const lerpFactor = 1 - Math.exp(-accel * dt);
+
+          e.vx += (targetVx - e.vx) * lerpFactor;
+          e.vy += (targetVy - e.vy) * lerpFactor;
+
+          // Move
+          let nx = e.x + e.vx * dt;
+          let ny = e.y + e.vy * dt;
 
           // Wall Collisions
-          nx = clamp(nx, 0.5, this.w - 0.5);
-          ny = clamp(ny, 0.5, this.h - 0.5);
+          // Simple slide against walls
+          // Check X
+          let testX = nx;
+          let testY = e.y; // First check X movement only
 
-          if (this.isWall(nx, e.y)) nx = e.x;
-          if (this.isWall(nx, ny)) ny = e.y;
+          // Constrain map bounds
+          testX = clamp(testX, 0.5, this.w - 0.5);
+
+          if (this.isWall(testX, testY)) {
+              e.vx = 0; // Bonk stop or slide? 0 is safe.
+              nx = e.x;
+          } else {
+              nx = testX;
+          }
+
+          // Check Y
+          testY = ny;
+          // Constrain bounds
+          testY = clamp(testY, 0.5, this.h - 0.5);
+
+          if (this.isWall(nx, testY)) {
+              e.vy = 0;
+              ny = e.y;
+          } else {
+              ny = testY;
+          }
 
           e.x = nx;
           e.y = ny;
@@ -225,6 +282,22 @@ export class Engine {
     const its = this.state.entities.filter(e => e.isIt);
     const others = this.state.entities.filter(e => !e.isIt);
 
+    // KotH Mode doesn't strictly need tags to score, but tags can still stun or swap IT?
+    // In KotH, usually there is no "IT". Everyone fights for hill.
+    // Or, "IT" players can't score?
+    // Let's keep it simple: KotH is just positioning. Tagging is disabled or used to knockback?
+    // Let's say: Tagging works as "Stun" or "Knockback" in KotH.
+    // Actually, let's keep Tagging logic for FFA/Infection only, or just swap logic.
+    // If KotH, maybe tagging stuns the victim for 2s?
+
+    if (this.state.mode === 'koth') {
+         // Everyone can tag everyone? Or just specific interaction?
+         // Let's make it so you can push people off.
+         // Tagging = Stun + Push
+         this.updateKotHCombat(dt);
+         return;
+    }
+
     its.forEach(it => {
         if (it.cooldowns.tag > 0) {
             it.cooldowns.tag -= dt;
@@ -232,6 +305,10 @@ export class Engine {
         }
 
         others.forEach(victim => {
+             // Ghost check
+             const isGhost = victim.effects.some(ef => ef.type === 'invis');
+             if (isGhost) return; // Can't tag ghosts
+
              // Check collision
              if (dist(it.x, it.y, victim.x, victim.y) < this.tagRadius) {
                  // Check if victim is shielded
@@ -297,7 +374,7 @@ export class Engine {
           const x = Math.floor(this.rng() * this.w);
           const y = Math.floor(this.rng() * this.h);
           if (this.state.grid[y][x].type !== 1) { // Not wall
-             const types = ['speed', 'shield']; // MVP types
+             const types = ['speed', 'shield', 'invis', 'teleport'];
              const type = types[Math.floor(this.rng() * types.length)];
              this.state.powerups.push({x: x+0.5, y: y+0.5, type});
              return;
@@ -310,6 +387,74 @@ export class Engine {
           ent.effects.push({type: 'speed', timer: 5.0});
       } else if (type === 'shield') {
           ent.effects.push({type: 'shield', timer: 10.0});
+      } else if (type === 'invis') {
+          ent.effects.push({type: 'invis', timer: 8.0});
+      } else if (type === 'teleport') {
+          // Teleport to random spot immediately
+          let tries = 10;
+          while(tries-- > 0) {
+              const tx = Math.floor(this.rng() * this.w);
+              const ty = Math.floor(this.rng() * this.h);
+              if (this.state.grid[ty][tx].type !== 1) {
+                  ent.x = tx + 0.5;
+                  ent.y = ty + 0.5;
+                  if (this.sfx) this.sfx.playTeleport();
+                  break;
+              }
+          }
+      }
+  }
+
+  updateHill(dt) {
+      this.state.hill.timer += dt;
+      if (this.state.hill.timer > this.state.hill.moveInterval) {
+          // Move Hill
+          this.state.hill.timer = 0;
+          // Find new spot
+          let tries = 20;
+          while(tries-- > 0) {
+              const x = Math.floor(this.rng() * (this.w - 2)) + 1;
+              const y = Math.floor(this.rng() * (this.h - 2)) + 1;
+              if (this.state.grid[y][x].type !== 1) {
+                  this.state.hill.x = x + 0.5;
+                  this.state.hill.y = y + 0.5;
+                  if (this.sfx) this.sfx.playHillMove(); // We need to add this
+                  break;
+              }
+          }
+      }
+
+      // Score for being in Hill
+      const rSq = this.state.hill.radius * this.state.hill.radius;
+      this.state.entities.forEach(e => {
+          const dSq = (e.x - this.state.hill.x)**2 + (e.y - this.state.hill.y)**2;
+          if (dSq < rSq) {
+              this.state.scores[e.id].hillTime += dt;
+          }
+      });
+  }
+
+  updateKotHCombat(dt) {
+      // Allow players to shove each other
+      const players = this.state.entities;
+      for (let i=0; i<players.length; i++) {
+          for (let j=i+1; j<players.length; j++) {
+              const p1 = players[i];
+              const p2 = players[j];
+              if (dist(p1.x, p1.y, p2.x, p2.y) < 0.8) {
+                  // Collision - Shove apart
+                  const dx = p2.x - p1.x;
+                  const dy = p2.y - p1.y;
+                  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+                  const pushX = (dx/len) * 5.0; // Push force
+                  const pushY = (dy/len) * 5.0;
+
+                  p2.vx += pushX;
+                  p2.vy += pushY;
+                  p1.vx -= pushX;
+                  p1.vy -= pushY;
+              }
+          }
       }
   }
 
@@ -362,6 +507,10 @@ export class Engine {
 
               score = s.tags * 100 + Math.round(s.timeSurvived * 1000 * 0.1);
               // We'll apply Win Bonus later after sorting
+              s.rawScore = score;
+          } else if (this.state.mode === 'koth') {
+              // KotH: hillTime * 1000
+              score = Math.round(s.hillTime * 1000);
               s.rawScore = score;
           } else {
               // Infection
