@@ -56,6 +56,7 @@ export const TrackGenerator = {
         const checkpoints = [];
         let roadTiles = [];
 
+        // 1. Build Grid
         for (let y = 0; y < rows; y++) {
             const row = [];
             for (let x = 0; x < cols; x++) {
@@ -69,7 +70,7 @@ export const TrackGenerator = {
             grid.push(row);
         }
 
-        // Find Start
+        // 2. Find Start
         let startX = 0, startY = 0;
         let foundStart = false;
         // Search bottom area for a straight road
@@ -96,32 +97,91 @@ export const TrackGenerator = {
             grid[startY][startX] = TILE.START;
         }
 
-        // Decorate
+        // 3. Generate Waypoints (Pathfinding)
+        // We need an ordered list of points for AI to follow.
+        // We'll run a simple walker from Start
+        const waypoints = [];
+        let curr = { x: startX, y: startY };
+        let visited = new Set();
+
+        // Initial direction: Right (since we looked for horizontal run)
+        let dir = { x: 1, y: 0 };
+
+        // Add start
+        waypoints.push({ x: startX + 0.5, y: startY + 0.5 });
+        visited.add(`${startX},${startY}`);
+
+        // Walk the track
+        let steps = 0;
+        while(steps < 200) {
+            steps++;
+
+            // Try current dir, then turns
+            const neighbors = [
+                { dx: dir.x, dy: dir.y },    // Forward
+                { dx: dir.y, dy: -dir.x },   // Right turn
+                { dx: -dir.y, dy: dir.x }    // Left turn
+            ];
+
+            let moved = false;
+            for(let n of neighbors) {
+                const nx = curr.x + n.dx;
+                const ny = curr.y + n.dy;
+                const key = `${nx},${ny}`;
+
+                if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !visited.has(key)) {
+                    // Is it drivable?
+                    const t = grid[ny][nx];
+                    if (t !== TILE.WALL && t !== TILE.GRASS) {
+                        curr = { x: nx, y: ny };
+                        visited.add(key);
+                        waypoints.push({ x: nx + 0.5, y: ny + 0.5 });
+                        dir = { x: n.dx, y: n.dy }; // Update direction
+                        moved = true;
+                        break;
+                    }
+                }
+            }
+
+            // If stuck, we might be back at start or dead end
+            if (!moved) {
+                // Check if adjacent to start (loop closed)
+                const dx = startX - curr.x;
+                const dy = startY - curr.y;
+                if (Math.abs(dx) + Math.abs(dy) === 1) {
+                    // Loop closed
+                }
+                break;
+            }
+        }
+
+
+        // 4. Decorate (Items & Boosts)
         roadTiles.forEach(pt => {
             const {x, y} = pt;
             if (grid[y][x] === TILE.START) return;
 
-            // Simple logic: if surrounded by road, chance for boost
+            // Simple logic: if surrounded by road, chance for boost or item box
             const roll = rng.next();
             if (roll < 0.03) grid[y][x] = TILE.BOOST;
             else if (roll > 0.97) grid[y][x] = TILE.JUMP;
         });
 
-        // Checkpoints (Simple corners)
-        // Top Left, Top Right, Bottom Right, Bottom Left relative to center
-        // Or just spaced out road tiles
-        const step = Math.floor(roadTiles.length / 4);
-        for(let i=1; i<=4; i++) {
-            const t = roadTiles[(i*step) % roadTiles.length];
-            if(t) checkpoints.push(t);
+        // 5. Checkpoints (Use waypoints indices)
+        if (waypoints.length > 0) {
+            checkpoints.push(waypoints[Math.floor(waypoints.length * 0.25)]);
+            checkpoints.push(waypoints[Math.floor(waypoints.length * 0.5)]);
+            checkpoints.push(waypoints[Math.floor(waypoints.length * 0.75)]);
+            checkpoints.push(waypoints[0]); // Finish line
         }
 
         return {
             grid,
             rows,
             cols,
-            start: { x: startX + 0.5, y: startY + 0.5, angle: -Math.PI/2 }, // Facing Up (North/ -Z in 3D, -Y in 2D map)
-            checkpoints
+            start: { x: startX + 0.5, y: startY + 0.5, angle: -Math.PI/2 },
+            checkpoints,
+            waypoints // Export for AI
         };
     }
 };
