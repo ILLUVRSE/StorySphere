@@ -11,6 +11,7 @@ import { validateTimelineSchema } from './types/timeline';
 import { db } from './db';
 import { MatchManager } from './matches/MatchManager';
 import { setupMatchSocket } from './ws/matchSocket';
+import { PixelPuckService } from './pixel-puck/PixelPuckService';
 import apiRoutes from './routes';
 
 const app = express();
@@ -34,6 +35,14 @@ matchManager.start();
 
 // Use new namespaced socket handler
 setupMatchSocket(io, matchManager);
+
+// Pixel Puck Service
+const pixelPuckService = new PixelPuckService(io);
+io.on('connection', (socket) => {
+    // Only handle global connections if not handled by namespaces?
+    // Actually, Pixel Puck uses the default namespace for now.
+    pixelPuckService.handleConnection(socket);
+});
 
 // Expose internal match creation for testing (TEMPORARY)
 app.post('/api/v1/internal/create_match', async (req, res) => {
