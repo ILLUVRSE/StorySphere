@@ -113,5 +113,65 @@ export const SFX = {
         gain.connect(SFX.ctx.destination);
         osc.start();
         osc.stop(SFX.ctx.currentTime + 0.5);
+    },
+
+    playItem: () => {
+        if (!SFX.ctx) return;
+        const osc = SFX.ctx.createOscillator();
+        const gain = SFX.ctx.createGain();
+
+        // Magic shimmer
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1000, SFX.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(2000, SFX.ctx.currentTime + 0.2);
+
+        gain.gain.setValueAtTime(0.3, SFX.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0, SFX.ctx.currentTime + 0.3);
+
+        osc.connect(gain);
+        gain.connect(SFX.ctx.destination);
+        osc.start();
+        osc.stop(SFX.ctx.currentTime + 0.3);
+    },
+
+    playShoot: () => {
+        if (!SFX.ctx) return;
+        const osc = SFX.ctx.createOscillator();
+        const gain = SFX.ctx.createGain();
+
+        // Laser pew
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, SFX.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, SFX.ctx.currentTime + 0.2);
+
+        gain.gain.setValueAtTime(0.2, SFX.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, SFX.ctx.currentTime + 0.2);
+
+        osc.connect(gain);
+        gain.connect(SFX.ctx.destination);
+        osc.start();
+        osc.stop(SFX.ctx.currentTime + 0.2);
+    },
+
+    playExplosion: () => {
+        if (!SFX.ctx) return;
+        const bufferSize = SFX.ctx.sampleRate * 0.5; // 0.5 sec
+        const buffer = SFX.ctx.createBuffer(1, bufferSize, SFX.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = SFX.ctx.createBufferSource();
+        noise.buffer = buffer;
+        const gain = SFX.ctx.createGain();
+
+        gain.gain.setValueAtTime(0.5, SFX.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, SFX.ctx.currentTime + 0.5);
+
+        noise.connect(gain);
+        gain.connect(SFX.ctx.destination);
+        noise.start();
     }
 };
