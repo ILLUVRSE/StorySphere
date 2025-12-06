@@ -36,7 +36,15 @@ export class MatchManager {
     public activeMatches: Map<string, ActiveMatch> = new Map();
     private io: Server | null = null;
 
-    constructor() {}
+    constructor(io?: Server) {
+        if (io) {
+            this.io = io;
+        }
+    }
+
+    public start() {
+        // Placeholder for future background tasks; keeps API compatibility
+    }
 
     public setIo(io: Server) {
         this.io = io;
@@ -154,6 +162,49 @@ export class MatchManager {
         this.broadcastLobbyState(matchId);
 
         return role;
+    }
+
+    /**
+     * Minimal match creation for testing/demo.
+     * Picks the first two teams in the DB; falls back to the seeded Riverport team twice if only one exists.
+     */
+    public async createMatch(): Promise<string> {
+        if (!db.isReady()) {
+            const mockId = `mock-${Date.now()}`;
+            this.activeMatches.set(mockId, {
+                engine: new RiverportEngine(mockId, { id: 'home', name: 'Home', players: [], lineup: [], pitcher: null as any } as any, { id: 'away', name: 'Away', players: [], lineup: [], pitcher: null as any } as any),
+                matchId: mockId,
+                homeTeamId: 'home',
+                awayTeamId: 'away',
+                homeOwnerId: 'owner-home',
+                awayOwnerId: 'owner-away',
+                connectedUsers: new Map(),
+                mode: 'live',
+                lineups: { home: { battingOrder: [], bench: [], startingPitcher: null, locked: false }, away: { battingOrder: [], bench: [], startingPitcher: null, locked: false } },
+                rosters: {
+                    home: { id: 'home', name: 'Home', players: [], lineup: [], pitcher: null as any },
+                    away: { id: 'away', name: 'Away', players: [], lineup: [], pitcher: null as any }
+                }
+            });
+            return mockId;
+        }
+
+        const seasonRes = await db.query('SELECT id FROM seasons ORDER BY created_at ASC LIMIT 1');
+        if (seasonRes.rowCount === 0) throw new Error('No season found');
+        const seasonId = seasonRes.rows[0].id;
+
+        const teamsRes = await db.query('SELECT id FROM teams ORDER BY created_at ASC LIMIT 2');
+        if (teamsRes.rowCount === 0) throw new Error('No teams found');
+
+        const homeTeam = teamsRes.rows[0].id;
+        const awayTeam = teamsRes.rows.length > 1 ? teamsRes.rows[1].id : teamsRes.rows[0].id;
+
+        const matchRes = await db.query(
+            'INSERT INTO matches (season_id, home_team, away_team, status, seed, mode, lineups) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+            [seasonId, homeTeam, awayTeam, 'scheduled', `seed-${Date.now()}`, 'live', {}]
+        );
+
+        return matchRes.rows[0].id;
     }
 
     public leaveMatch(socketId: string, matchId: string) {

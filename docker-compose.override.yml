@@ -1,8 +1,6 @@
 services:
   redis:
-    # Remove host port binding to avoid conflicts with host Redis
-    ports: []
+    # No host port binding; rely on internal network
 
   postgres:
-    # Remove host port binding to avoid conflicts with host Postgres
-    ports: []
+    # No host port binding; rely on internal network
