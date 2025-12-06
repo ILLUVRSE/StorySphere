@@ -23,9 +23,40 @@ export class AI {
     decide(gameState) {
         const me = this.entity;
 
+        if (gameState.mode === 'koth') {
+            // King of the Hill logic
+            // Always move to hill
+            this.state = 'seek_hill';
+            this.target = {x: gameState.hill.x, y: gameState.hill.y};
+
+            // Unless there is a powerup very close?
+            const nearestPowerup = this.findNearest(gameState.powerups, () => true);
+            if (nearestPowerup && dist(me.x, me.y, nearestPowerup.x, nearestPowerup.y) < 3) {
+                this.state = 'hunt';
+                this.target = {x: nearestPowerup.x, y: nearestPowerup.y};
+            }
+            return;
+        }
+
         // Check surrounding threats
-        const nearestThreat = this.findNearest(gameState.entities, e => e.isIt && e.id !== me.id);
-        const nearestPrey = this.findNearest(gameState.entities, e => !e.isIt && e.id !== me.id);
+        // Ignore invisible threats
+        const nearestThreat = this.findNearest(gameState.entities, e => {
+            if (e.id === me.id) return false;
+            if (!e.isIt) return false;
+            // Ghost check
+            const isGhost = e.effects && e.effects.some(ef => ef.type === 'invis');
+            return !isGhost;
+        });
+
+        // Ignore invisible prey
+        const nearestPrey = this.findNearest(gameState.entities, e => {
+            if (e.id === me.id) return false;
+            if (e.isIt) return false;
+            // Ghost check
+            const isGhost = e.effects && e.effects.some(ef => ef.type === 'invis');
+            return !isGhost;
+        });
+
         const nearestPowerup = this.findNearest(gameState.powerups, () => true);
 
         if (me.isIt) {
@@ -82,6 +113,16 @@ export class AI {
         } else if (this.state === 'hunt' && this.target) {
              dx = this.target.x - me.x;
              dy = this.target.y - me.y;
+        } else if (this.state === 'seek_hill' && this.target) {
+             // BFS to hill
+             const nextStep = this.getPathStep(gameState, Math.floor(me.x), Math.floor(me.y), Math.floor(this.target.x), Math.floor(this.target.y));
+             if (nextStep) {
+                 dx = (nextStep.x + 0.5) - me.x;
+                 dy = (nextStep.y + 0.5) - me.y;
+             } else {
+                 dx = this.target.x - me.x;
+                 dy = this.target.y - me.y;
+             }
         } else {
             // Wander randomly
             if (Math.random() < 0.05) {

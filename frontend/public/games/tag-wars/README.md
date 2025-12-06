@@ -23,13 +23,19 @@ Tag Wars is a fast-paced grid chase game where players dodge "It", collect power
 *   One player starts as "It".
 *   "It" must tag another player to pass the status.
 *   **Score:** Points for every tag made + Time spent NOT "It".
-*   **Win:** The player with the highest score when time runs out (or last survivor).
+*   **Win:** The player with the highest score when time runs out.
 
 ### Infection
 *   One player starts as "Zombie" (It).
 *   Tagged players become Zombies.
 *   **Zombie Goal:** Infect everyone before time runs out.
 *   **Survivor Goal:** Survive until time runs out.
+
+### King of the Hill (KotH)
+*   A golden zone (Hill) appears on the map and moves periodically.
+*   **Goal:** Stand inside the hill to accumulate points.
+*   **Combat:** Collisions in this mode push opponents away.
+*   **Win:** The player with the most hill time wins.
 
 ## Tiles
 *   **Floor:** Normal speed.
@@ -38,7 +44,10 @@ Tag Wars is a fast-paced grid chase game where players dodge "It", collect power
 *   **Fast (Green):** Increases movement speed.
 *   **Bounce (Orange):** Pushes you in your movement direction.
 *   **Trap (Red):** Stuns or stops movement briefly.
+*   **Ice (Blue):** Slippery surface! Low friction allows for drifting.
 
 ## Powerups
 *   **⚡ Speed:** Boosts speed for a short duration.
 *   **🛡️ Shield:** Blocks one tag attempt.
+*   **👻 Ghost:** Grants invisibility (immune to tags and bot targeting).
+*   **🌀 Teleport:** Instantly warps you to a random safe location.
