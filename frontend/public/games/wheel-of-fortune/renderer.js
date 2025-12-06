@@ -12,6 +12,10 @@ export class Renderer {
         this.wheelRadius = 0;
         this.centerX = 0;
         this.centerY = 0;
+
+        // Juice state
+        this.particles = [];
+        this.shake = 0;
     }
 
     resize() {
@@ -35,14 +39,65 @@ export class Renderer {
     }
 
     draw() {
+        const ctx = this.ctx;
+
+        // Screen Shake
+        ctx.save();
+        if (this.shake > 0) {
+            const dx = (Math.random() - 0.5) * this.shake;
+            const dy = (Math.random() - 0.5) * this.shake;
+            ctx.translate(dx, dy);
+            this.shake *= 0.9; // Decay
+            if (this.shake < 0.5) this.shake = 0;
+        }
+
         // Clear
-        this.ctx.fillStyle = '#004d40'; // Dark Teal Theme
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.fillStyle = '#004d40'; // Dark Teal Theme
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         this.drawWheel();
         this.drawBoard();
         this.drawHUD();
         this.drawControls();
+        this.drawParticles();
+
+        ctx.restore();
+    }
+
+    triggerShake(amount) {
+        this.shake = amount;
+    }
+
+    spawnParticles(x, y, color, count = 20) {
+        for(let i=0; i<count; i++) {
+            this.particles.push({
+                x, y,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                life: 1.0,
+                color: color
+            });
+        }
+    }
+
+    drawParticles() {
+        const ctx = this.ctx;
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.2; // Gravity
+            p.life -= 0.02;
+
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, 4, 4);
+            ctx.globalAlpha = 1.0;
+
+            if (p.life <= 0) {
+                this.particles.splice(i, 1);
+            }
+        }
     }
 
     drawWheel() {
@@ -89,7 +144,7 @@ export class Renderer {
 
         ctx.restore();
 
-        // Pointer (Fixed at top/12 o'clock relative to canvas, which is -PI/2)
+        // Pointer
         ctx.save();
         ctx.translate(cx, cy);
         ctx.fillStyle = '#fff';
@@ -121,11 +176,9 @@ export class Renderer {
             boardH = this.canvas.height * 0.3;
         }
 
-        // Draw puzzle tiles
         const text = this.engine.puzzle.text;
-        const grid = this.engine.puzzle.grid; // Lines array
+        const grid = this.engine.puzzle.grid;
 
-        // Determine tile size based on max line length
         const maxLineLen = Math.max(...grid.map(l => l.length));
         const tileSize = Math.min(boardW / (maxLineLen + 2), boardH / (grid.length + 2));
 
@@ -134,20 +187,6 @@ export class Renderer {
         const startX = boardX + (boardW - totalW) / 2;
         const startY = boardY + (boardH - totalH) / 2;
 
-        let charIndex = 0; // To track global index in original text (ignoring spaces logic if simple... actually spaces count)
-        // Wait, text is one string, grid is lines.
-        // We need to map back to original indices to check revealed status.
-        // Let's iterate original text and flow it.
-
-        let cursorX = startX;
-        let cursorY = startY;
-
-        // Re-flow logic must match engine's grid creation?
-        // Actually, let's just use the grid lines and assume they map sequentially.
-        // This is tricky if engine just splits by space.
-        // Let's assume the engine grid creation is the source of truth for display.
-        // We need to know which character in the grid corresponds to which in the linear text string for `revealed` array.
-
         let globalIdx = 0;
 
         ctx.font = `bold ${tileSize * 0.6}px monospace`;
@@ -155,22 +194,17 @@ export class Renderer {
         ctx.textBaseline = 'middle';
 
         for (let line of grid) {
-            // Center each line?
             const lineWidth = line.length * tileSize;
             let lineX = startX + (totalW - lineWidth) / 2;
 
             for (let char of line) {
                  if (char !== ' ') {
-                     // Draw Tile
                      ctx.fillStyle = '#fdfbf7'; // Cream
                      ctx.fillRect(lineX, cursorY, tileSize - 2, tileSize - 2);
                      ctx.strokeStyle = '#000';
                      ctx.strokeRect(lineX, cursorY, tileSize - 2, tileSize - 2);
 
-                     // Draw Letter if revealed
-                     // Find index in original text... this is fragile if we don't track it.
-                     // Let's just scan ahead in original text skipping spaces until we match char?
-                     // Assuming text structure matches grid structure perfectly.
+                     // Find index
                      while(this.engine.puzzle.text[globalIdx] === ' ') globalIdx++;
 
                      if (this.engine.revealed[globalIdx]) {
@@ -187,33 +221,70 @@ export class Renderer {
 
     drawHUD() {
         const ctx = this.ctx;
-        ctx.fillStyle = '#ffd700'; // Gold
-        ctx.font = 'bold 24px sans-serif';
+        const engine = this.engine;
+
+        // Players List (Top Right or Bottom in portrait?)
+        // Let's put it on the Right side in landscape
+        const isLandscape = this.canvas.width > this.canvas.height;
+        let hudX = isLandscape ? this.canvas.width - 250 : 20;
+        let hudY = isLandscape ? 50 : this.canvas.height - 200;
+
+        ctx.font = 'bold 20px sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(`CASH: $${this.engine.roundCash}`, 20, 30);
-        ctx.fillText(`SCORE: ${this.engine.score}`, 200, 30);
+
+        engine.players.forEach((p, i) => {
+            const isCurrent = i === engine.currentPlayerIndex;
+
+            // Highlight current player box
+            if (isCurrent) {
+                ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+                ctx.fillRect(hudX - 10, hudY - 25, 240, 60);
+                ctx.strokeStyle = '#ffd700';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(hudX - 10, hudY - 25, 240, 60);
+            }
+
+            ctx.fillStyle = isCurrent ? '#ffd700' : '#ccc';
+            ctx.fillText(`${p.name}`, hudX, hudY);
+
+            ctx.fillStyle = '#fff';
+            ctx.fillText(`$${p.roundCash} (Bank: $${p.bank})`, hudX, hudY + 25);
+
+            // Inventory
+            if (p.inventory.length > 0) {
+                 ctx.font = '14px sans-serif';
+                 ctx.fillStyle = '#8bc34a';
+                 ctx.fillText(`ITEMS: ${p.inventory.join(', ')}`, hudX, hudY + 45);
+                 ctx.font = 'bold 20px sans-serif';
+            }
+
+            hudY += 80;
+        });
+
+        // Jackpot Display
+        ctx.fillStyle = '#ffd700';
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 30px sans-serif';
+        if (isLandscape) {
+             ctx.fillText(`JACKPOT: $${engine.jackpot}`, this.centerX, 40);
+        } else {
+             ctx.fillText(`JACKPOT: $${engine.jackpot}`, this.canvas.width / 2, 40);
+        }
 
         // Message Bar
         ctx.textAlign = 'center';
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 20px sans-serif';
-        ctx.fillText(this.engine.message, this.canvas.width / 2, this.canvas.height - 100);
+        ctx.font = 'bold 24px sans-serif';
+        // Pulse effect for message
+        const scale = 1.0 + Math.sin(Date.now() / 200) * 0.05;
+        ctx.save();
+        ctx.translate(this.canvas.width / 2, this.canvas.height - 50);
+        ctx.scale(scale, scale);
+        ctx.fillText(this.engine.message, 0, 0);
+        ctx.restore();
     }
 
     drawControls() {
-        // Only if interaction needed?
-        // Input logic is mostly keyboard or overlaid HTML buttons?
-        // Let's draw a visual indicator of Spin state
-        /*
-        const ctx = this.ctx;
-        if (this.engine.state === 'SPIN') {
-             ctx.fillStyle = 'rgba(255,255,255,0.2)';
-             ctx.beginPath();
-             ctx.arc(this.centerX, this.centerY, this.wheelRadius, 0, Math.PI*2);
-             ctx.fill();
-             ctx.fillStyle = '#fff';
-             ctx.fillText("TAP TO SPIN", this.centerX, this.centerY);
-        }
-        */
+        // Visuals only
     }
 }
