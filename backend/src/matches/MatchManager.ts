@@ -3,6 +3,13 @@ import { MatchEvent, TeamRoster, GameEvent } from '../../shared/riverport-engine
 import { db } from '../db';
 import { Server } from 'socket.io';
 
+interface LineupState {
+    battingOrder: string[];
+    bench: string[];
+    startingPitcher: string | null;
+    locked: boolean;
+}
+
 interface ActiveMatch {
     engine: RiverportEngine;
     matchId: string;
@@ -12,6 +19,17 @@ interface ActiveMatch {
     awayOwnerId: string;
     // Map socketId -> userId (or role)
     connectedUsers: Map<string, { userId: string, role: 'HOME' | 'AWAY' | 'SPECTATOR' }>;
+
+    // New fields
+    mode: 'live' | 'sim';
+    lineups: {
+        home: LineupState;
+        away: LineupState;
+    };
+    rosters: {
+        home: TeamRoster;
+        away: TeamRoster;
+    };
 }
 
 export class MatchManager {
@@ -49,7 +67,7 @@ export class MatchManager {
                 position: p.position,
                 stats: p.stats
             })),
-            lineup: players.slice(0, 9).map((p: any) => p.id),
+            lineup: players.slice(0, 9).map((p: any) => p.id), // Default from DB? Or handled by lineup editor
             pitcher: players.find((p: any) => p.position === 'P')?.id || players[0].id
         };
     }
@@ -74,20 +92,19 @@ export class MatchManager {
         const homeRoster = await this.getTeamRoster(match.home_team);
         const awayRoster = await this.getTeamRoster(match.away_team);
 
-        // 2. Init Engine
-        const engine = new RiverportEngine(match.seed || matchId, homeRoster, awayRoster);
+        // 2. Parse stored lineups or init default
+        let lineups = match.lineups || {};
+        if (!lineups.home) {
+            lineups.home = { battingOrder: [], bench: [], startingPitcher: null, locked: false };
+        }
+        if (!lineups.away) {
+            lineups.away = { battingOrder: [], bench: [], startingPitcher: null, locked: false };
+        }
 
-        // 3. Rehydrate from logs (Basic Fast-Forward)
-        // Ideally we fetch all events and apply them.
-        // For MVP: We assume engine starts fresh or we rely on logs.
-        // Prompt says "Rebuild state by replaying event logs".
-        // Current Engine doesn't support 'applyEvent' to update state.
-        // We will fetch logs just to have them, but for the Engine state,
-        // we might be starting from inning 1 if we don't implement full hydration.
-        // *Correction:* To strictly follow instructions, I should implement hydration.
-        // However, I can't easily modify shared/engine substantially in this step without iterating.
-        // I will assume for now that if the server restarts, the engine resets.
-        // But for *new* connections to an *active* server, the engine is in memory.
+        const mode = match.mode || 'live';
+
+        // 3. Init Engine
+        const engine = new RiverportEngine(match.seed || matchId, homeRoster, awayRoster);
 
         // 4. Store
         const activeMatch: ActiveMatch = {
@@ -97,7 +114,10 @@ export class MatchManager {
             awayTeamId: match.away_team,
             homeOwnerId,
             awayOwnerId,
-            connectedUsers: new Map()
+            connectedUsers: new Map(),
+            mode,
+            lineups,
+            rosters: { home: homeRoster, away: awayRoster }
         };
         this.activeMatches.set(matchId, activeMatch);
         return activeMatch;
@@ -116,18 +136,22 @@ export class MatchManager {
 
         let role: 'HOME' | 'AWAY' | 'SPECTATOR' = 'SPECTATOR';
 
-        if (asPlayer && userId) {
+        if (userId) {
             if (userId === match.homeOwnerId) role = 'HOME';
             else if (userId === match.awayOwnerId) role = 'AWAY';
-            else {
-                // Unauthorized to play
-                return null;
-            }
+        }
+
+        // As player check?
+        if (asPlayer && role === 'SPECTATOR') {
+             return null;
         }
 
         if (userId) {
             match.connectedUsers.set(socketId, { userId, role });
         }
+
+        // Broadcast updated lobby presence?
+        this.broadcastLobbyState(matchId);
 
         return role;
     }
@@ -136,7 +160,185 @@ export class MatchManager {
         const match = this.activeMatches.get(matchId);
         if (match) {
             match.connectedUsers.delete(socketId);
-            // If empty, maybe unload? Keep for now.
+            this.broadcastLobbyState(matchId);
+        }
+    }
+
+    public async handleLineupSubmission(matchId: string, userId: string, payload: { battingOrder: string[], bench: string[], startingPitcher: string }) {
+        const match = this.activeMatches.get(matchId);
+        if (!match) return;
+
+        let teamKey: 'home' | 'away';
+        if (userId === match.homeOwnerId) teamKey = 'home';
+        else if (userId === match.awayOwnerId) teamKey = 'away';
+        else return; // Unauthorized
+
+        // Validation
+        const roster = match.rosters[teamKey];
+        const allProvidedIds = [...payload.battingOrder, ...payload.bench];
+
+        // Check 1: Batting order size
+        if (payload.battingOrder.length !== 9) {
+            // Error handling? For now just return or log.
+            // Ideally emit 'error' back to socket.
+            console.warn("Invalid lineup size");
+            return;
+        }
+
+        // Check 2: Membership
+        const rosterIds = new Set(roster.players.map(p => p.id));
+        for (const id of allProvidedIds) {
+            if (!rosterIds.has(id)) {
+                console.warn(`Player ${id} not in roster`);
+                return;
+            }
+        }
+        if (!rosterIds.has(payload.startingPitcher)) {
+            console.warn(`Pitcher ${payload.startingPitcher} not in roster`);
+            return;
+        }
+
+        // Update State
+        match.lineups[teamKey] = {
+            battingOrder: payload.battingOrder,
+            bench: payload.bench,
+            startingPitcher: payload.startingPitcher,
+            locked: true
+        };
+
+        // Persist
+        if (db.isReady()) {
+            await db.query('UPDATE matches SET lineups = $1 WHERE id = $2', [JSON.stringify(match.lineups), matchId]);
+        }
+
+        this.broadcastLobbyState(matchId);
+    }
+
+    public async handleModeUpdate(matchId: string, userId: string, mode: 'live' | 'sim') {
+        const match = this.activeMatches.get(matchId);
+        if (!match) return;
+
+        // Only Home Manager can change mode
+        if (userId !== match.homeOwnerId) return;
+
+        match.mode = mode;
+
+        if (db.isReady()) {
+            await db.query('UPDATE matches SET mode = $1 WHERE id = $2', [mode, matchId]);
+        }
+
+        this.broadcastLobbyState(matchId);
+    }
+
+    public async startMatch(matchId: string, userId: string) {
+        const match = this.activeMatches.get(matchId);
+        if (!match) return;
+
+        // Only Home Manager can start (prompt implied home owner controls mode/flow)
+        if (userId !== match.homeOwnerId) return;
+
+        // Check locks
+        if (!match.lineups.home.locked || !match.lineups.away.locked) {
+            console.warn("Cannot start match: Lineups not locked");
+            return;
+        }
+
+        // Update status
+        if (db.isReady()) {
+            await db.query("UPDATE matches SET status = 'in_progress' WHERE id = $1", [matchId]);
+        }
+
+        // Apply lineups to engine (Engine might need a method to set lineups if not done in constructor properly)
+        // Current Engine constructor took rosters but didn't know specific 1-9 lineup order if it differs from roster order.
+        // For MVP, we assume Engine uses the roster list or we might need to update Engine.
+        // Engine.ts uses `team.lineup` which we populated in `getTeamRoster`.
+        // We should update the engine's internal team structure with the chosen lineup.
+        // Quick fix: Modify engine's team state directly
+        (match.engine as any).homeTeam.lineup = match.lineups.home.battingOrder;
+        (match.engine as any).homeTeam.pitcher = match.lineups.home.startingPitcher;
+        (match.engine as any).awayTeam.lineup = match.lineups.away.battingOrder;
+        (match.engine as any).awayTeam.pitcher = match.lineups.away.startingPitcher;
+
+
+        if (match.mode === 'sim') {
+            match.engine.simulateToEnd();
+            const events = match.engine.getEvents();
+
+            // Persist all events
+            await this.persistEvents(matchId, events);
+
+            // Broadcast End
+            if (this.io) {
+                this.io.to(`match:${matchId}`).emit('match_ended', { finalScore: match.engine.getState().score });
+                // Also send full replay?
+                this.io.to(`match:${matchId}`).emit('replay', events);
+            }
+        } else {
+            // Live
+            if (this.io) {
+                this.io.to(`match:${matchId}`).emit('match_started', { mode: 'live' });
+            }
+        }
+    }
+
+    private async persistEvents(matchId: string, events: any[]) {
+         if (!db.isReady()) return;
+         const client = await db.pool.connect();
+         try {
+             await client.query('BEGIN');
+             // clear existing?
+             await client.query('DELETE FROM event_logs WHERE match_id = $1', [matchId]);
+
+             let seq = 1;
+             for (const event of events) {
+                 await client.query(
+                    `INSERT INTO event_logs (match_id, seq, type, payload) VALUES ($1, $2, $3, $4)`,
+                    [matchId, seq, event.type, event.payload]
+                );
+                seq++;
+             }
+
+             // Update match result
+             const finalScore = events.find(e => e.type === 'match_end')?.payload?.finalScore;
+             if (finalScore) {
+                 await client.query('UPDATE matches SET status = $1, final_score = $2 WHERE id = $3', ['completed', finalScore, matchId]);
+             }
+
+             await client.query('COMMIT');
+         } catch (e) {
+             console.error(e);
+             await client.query('ROLLBACK');
+         } finally {
+             client.release();
+         }
+    }
+
+    public getLobbyState(matchId: string) {
+        const match = this.activeMatches.get(matchId);
+        if (!match) return null;
+
+        // Count connected
+        let homeConnected = false;
+        let awayConnected = false;
+        for (const [_, user] of match.connectedUsers) {
+            if (user.role === 'HOME') homeConnected = true;
+            if (user.role === 'AWAY') awayConnected = true;
+        }
+
+        return {
+            matchId: match.matchId,
+            homeTeamId: match.homeTeamId,
+            awayTeamId: match.awayTeamId,
+            homeConnected,
+            awayConnected,
+            mode: match.mode,
+            lineups: match.lineups
+        };
+    }
+
+    private broadcastLobbyState(matchId: string) {
+        if (this.io) {
+            this.io.to(`match:${matchId}`).emit('lobby_state', this.getLobbyState(matchId));
         }
     }
 
