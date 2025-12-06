@@ -8,29 +8,28 @@ export class UI {
 
   setupDOM() {
     this.container.innerHTML = `
-      <div id="hud" style="position: absolute; top: 10px; left: 10px; color: #7fffd4; font-family: monospace; font-size: 16px; pointer-events: none; z-index: 10;">
-        <div>SCORE: <span id="score">0</span></div>
-        <div>DIST: <span id="dist">0</span>m</div>
-        <div style="font-size: 10px; opacity: 0.7; margin-top: 4px;">SEED: <span id="seed-display"></span></div>
+      <div id="hud" style="position: absolute; top: 10px; left: 10px; color: #ffd700; font-family: 'Press Start 2P', monospace; font-size: 16px; pointer-events: none; z-index: 10; text-shadow: 2px 2px #000;">
+        <div>SCORE <span id="score">0</span></div>
+        <div style="margin-top: 5px;">DIST <span id="dist">0</span>m</div>
+        <div style="font-size: 8px; opacity: 0.7; margin-top: 4px;">SEED: <span id="seed-display"></span></div>
       </div>
 
-      <div id="game-over" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #00382e; border: 2px solid #009688; padding: 20px; color: #fdfbf7; text-align: center; font-family: sans-serif; min-width: 280px; z-index: 20; box-shadow: 0 0 20px rgba(0,0,0,0.5); pointer-events: auto;">
-        <h2 style="margin: 0 0 10px; color: #ffd700; text-transform: uppercase;">Game Over</h2>
-        <div style="font-size: 24px; margin-bottom: 10px; color: #fff;">Score: <span id="final-score">0</span></div>
-        <div style="font-size: 14px; margin-bottom: 20px; opacity: 0.8;">Distance: <span id="final-dist">0</span>m</div>
+      <div id="controls-hint" style="position: absolute; bottom: 10px; width: 100%; text-align: center; color: rgba(255,255,255,0.5); font-family: 'Press Start 2P', monospace; font-size: 8px; pointer-events: none;">
+         DESKTOP: ARROWS MOVE / SPACE SHOOT<br>
+         MOBILE: LEFT SIDE MOVE / RIGHT SIDE SHOOT
+      </div>
 
-        <div style="text-align: left; margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px;">
-            <div style="border-bottom: 1px solid #009688; margin-bottom: 5px; font-size: 12px; color: #009688; font-weight: bold;">TOP SCORES (This Seed)</div>
-            <div id="leaderboard" style="font-size: 12px; max-height: 100px; overflow-y: auto; font-family: monospace;"></div>
+      <div id="game-over" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #000; border: 4px solid #ffd700; padding: 20px; color: #fff; text-align: center; font-family: 'Press Start 2P', monospace; min-width: 280px; z-index: 20; box-shadow: 0 0 20px #000; pointer-events: auto; image-rendering: pixelated;">
+        <h2 style="margin: 0 0 20px; color: #ff0000; text-transform: uppercase; font-size: 20px;">GAME OVER</h2>
+        <div style="font-size: 16px; margin-bottom: 10px;">SCORE: <span id="final-score" style="color: #ffd700;">0</span></div>
+        <div style="font-size: 10px; margin-bottom: 20px; opacity: 0.8;">DIST: <span id="final-dist">0</span>m</div>
+
+        <div style="text-align: left; margin-bottom: 20px; background: #222; padding: 10px; border: 2px solid #555;">
+            <div style="border-bottom: 2px solid #555; margin-bottom: 5px; font-size: 8px; color: #00e5ff;">TOP SCORES (SEED)</div>
+            <div id="leaderboard" style="font-size: 8px; max-height: 100px; overflow-y: auto;"></div>
         </div>
 
-        <button id="retry-btn" style="background: #ffd700; color: #000; border: none; padding: 12px 24px; font-weight: bold; cursor: pointer; border-radius: 4px; font-size: 16px;">PLAY AGAIN</button>
-      </div>
-
-      <div id="mobile-hints" style="display: none; pointer-events: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5;">
-         <div style="position: absolute; top: 25%; left: 50%; transform: translateX(-50%); opacity: 0.4; color: white; font-size: 40px;">▲</div>
-         <div style="position: absolute; bottom: 25%; left: 50%; transform: translateX(-50%); opacity: 0.4; color: white; font-size: 40px;">▼</div>
-         <div style="position: absolute; bottom: 10%; width: 100%; text-align: center; color: rgba(255,255,255,0.5); font-size: 12px;">Swipe to Move</div>
+        <button id="retry-btn" style="background: #ff0000; color: #fff; border: 4px solid #fff; padding: 12px 24px; font-family: 'Press Start 2P', monospace; cursor: pointer; font-size: 12px; text-transform: uppercase;">RETRY</button>
       </div>
     `;
 
@@ -43,14 +42,8 @@ export class UI {
     this.leaderboardEl = document.getElementById('leaderboard');
     this.retryBtn = document.getElementById('retry-btn');
 
-    if ('ontouchstart' in window) {
-        const hints = document.getElementById('mobile-hints');
-        hints.style.display = 'block';
-        setTimeout(() => {
-            hints.style.transition = 'opacity 1s';
-            hints.style.opacity = '0';
-        }, 3500);
-    }
+    // Hide mobile hints on desktop if wanted, but simpler to show generic text
+    // The visual hints overlay is removed in favor of text at bottom
   }
 
   updateHUD(score, distance, seed) {
@@ -79,7 +72,6 @@ export class UI {
         data = JSON.parse(localStorage.getItem(key) || '[]');
     } catch(e) {}
 
-    // Add current run
     data.push({
         score: Math.floor(score),
         distance: Math.floor(distance),
@@ -87,14 +79,10 @@ export class UI {
         date: new Date().toISOString()
     });
 
-    // Sort globally by score first to keep top list clean
     data.sort((a, b) => b.score - a.score);
-
-    // Keep top 50 globally
     if (data.length > 50) data = data.slice(0, 50);
     localStorage.setItem(key, JSON.stringify(data));
 
-    // Display filter: Only this seed
     const relevant = data.filter(d => d.seed === seed).slice(0, 5);
 
     if (relevant.length === 0) {

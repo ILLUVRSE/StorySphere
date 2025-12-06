@@ -1,13 +1,20 @@
 export const CONSTANTS = {
-  COLS: 12, // Default, might be 9 on mobile
-  ROWS: 6,
-  TILE_ADVANCE_START: 260,
-  TILE_ADVANCE_MIN: 140,
-  SPEED_RAMP_COLUMNS: 30,
-  SPEED_RAMP_DECAY: 0.94, // 6% reduction
+  COLS: 12,
+  ROWS: 8, // Increased from 6 for more space
+  TILE_ADVANCE_START: 200, // Faster start
+  TILE_ADVANCE_MIN: 100,
+  SPEED_RAMP_COLUMNS: 50,
+  SPEED_RAMP_DECAY: 0.96,
   CANVAS_WIDTH: 480,
   CANVAS_HEIGHT: 320,
-  SHIP_COL: 2,
+  SHIP_COL: 1, // Moved back slightly
+
+  // Entity Speeds (in Columns per Second)
+  BULLET_SPEED: 15,
+  ENEMY_SPEED: 2,
+
+  // Cooldowns
+  FIRE_RATE_MS: 200,
 };
 
 export function mulberry32(a) {
@@ -19,7 +26,6 @@ export function mulberry32(a) {
   };
 }
 
-// Simple string hash to integer for seeding
 export function cyrb128(str) {
     let h1 = 1779033703, h2 = 3144134277,
         h3 = 1013904242, h4 = 2773480762;
@@ -39,5 +45,5 @@ export function cyrb128(str) {
 
 export function getDailySeed() {
   const date = new Date();
-  return date.toISOString().split('T')[0]; // YYYY-MM-DD
+  return date.toISOString().split('T')[0];
 }
