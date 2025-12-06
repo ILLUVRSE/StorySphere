@@ -7,36 +7,98 @@
     <style>
         body { margin: 0; overflow: hidden; background: #004d40; color: #fdfbf7; font-family: sans-serif; touch-action: none; }
         #gameCanvas { display: block; width: 100vw; height: 100vh; }
-        .ui-layer { position: absolute; bottom: 20px; width: 100%; display: flex; flex-direction: column; align-items: center; pointer-events: none; gap: 10px; }
+
+        /* UI Layers */
+        .ui-layer { position: absolute; bottom: 20px; width: 100%; display: flex; flex-direction: column; align-items: center; pointer-events: none; gap: 10px; z-index: 10; }
         .controls { display: flex; gap: 20px; pointer-events: auto; }
         .powerups { display: flex; gap: 10px; pointer-events: auto; margin-bottom: 10px; }
 
+        /* Buttons */
         button {
             background: #009688; border: none; border-radius: 8px; color: white;
             padding: 15px 30px; font-size: 20px; font-weight: bold;
             box-shadow: 0 4px #00695c; cursor: pointer; transition: transform 0.1s;
         }
         button:active { transform: translateY(4px); box-shadow: 0 0 #00695c; }
-        button:disabled { background: #555; box-shadow: none; opacity: 0.5; transform: none; }
+        button:disabled { background: #555; box-shadow: none; opacity: 0.5; transform: none; cursor: not-allowed; }
 
         .btn-action { min-width: 120px; }
         .btn-small { font-size: 14px; padding: 8px 16px; background: #ff9800; box-shadow: 0 3px #e65100; }
         .btn-small.active { background: #f57c00; border: 2px solid #ffd700; }
+        .btn-lifeline { background: #673ab7; box-shadow: 0 3px #311b92; font-size: 14px; padding: 10px 14px; }
 
         #hint-text {
             position: absolute; top: 100px; width: 100%; text-align: center;
             font-size: 18px; color: #ffd700; text-shadow: 0 2px 0 #000;
+            z-index: 5; pointer-events: none;
+        }
+
+        /* Mode Selection Overlay */
+        #start-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 77, 64, 0.95);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100; gap: 20px;
+        }
+        #start-screen h1 { font-size: 40px; color: #ffd700; text-shadow: 2px 2px #000; margin-bottom: 40px; }
+        .mode-btn { width: 250px; text-align: center; }
+
+        /* Millionaire Ladder */
+        #ladder-container {
+            position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+            display: flex; flex-direction: column-reverse; /* Bottom is $100 */
+            gap: 2px; z-index: 5; pointer-events: none; display: none;
+        }
+        .ladder-step {
+            padding: 4px 10px; background: rgba(0,0,0,0.5); border-radius: 4px;
+            color: #ccc; font-size: 12px; font-family: monospace; text-align: right;
+        }
+        .ladder-step.active { background: #ff9800; color: #fff; transform: scale(1.1); font-weight: bold; border: 1px solid #ffd700; }
+        .ladder-step.safe { color: #ffd700; }
+        .ladder-step.completed { background: #009688; }
+
+        /* Dramatic Effects */
+        .spotlight {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            background: radial-gradient(circle, transparent 20%, #000 90%);
+            z-index: 8; pointer-events: none; opacity: 0; transition: opacity 0.5s;
+        }
+        .dimmed { opacity: 1; }
+
+        #roast-msg {
+            position: absolute; top: 40%; width: 100%; text-align: center;
+            font-size: 32px; color: #ff5252; font-weight: bold; text-shadow: 2px 2px #000;
+            opacity: 0; transition: opacity 1s; z-index: 20; pointer-events: none;
         }
     </style>
 </head>
 <body>
+    <div id="start-screen">
+        <h1>Higher or Lower</h1>
+        <button class="mode-btn" data-mode="arcade">Classic Arcade</button>
+        <button class="mode-btn" data-mode="streak" style="background: #e91e63; box-shadow: 0 4px #880e4f;">Streak Mode</button>
+        <button class="mode-btn" data-mode="millionaire" style="background: #ffd700; color: #000; box-shadow: 0 4px #bf360c;">Treat Your Self ($$$)</button>
+    </div>
+
     <div id="hint-text"></div>
+    <div id="roast-msg"></div>
+    <div class="spotlight" id="spotlight"></div>
+
+    <div id="ladder-container">
+        <!-- JS will populate -->
+    </div>
+
     <canvas id="gameCanvas"></canvas>
 
     <div class="ui-layer">
-        <div class="powerups">
+        <div class="powerups" id="classic-powerups">
             <button id="btn-double" class="btn-small">Double Or Nothing</button>
             <button id="btn-hint" class="btn-small">Hint</button>
+        </div>
+        <div class="powerups" id="millionaire-lifelines" style="display:none;">
+            <button id="btn-audience" class="btn-lifeline">👥 Audience</button>
+            <button id="btn-phone" class="btn-lifeline">📞 Phone Friend</button>
+            <button id="btn-swap" class="btn-lifeline">🔄 Swap Card</button>
         </div>
         <div class="controls">
             <button id="btn-lower" class="btn-action">Lower ▼</button>

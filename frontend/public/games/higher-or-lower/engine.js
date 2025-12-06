@@ -29,6 +29,20 @@ export class GameEngine {
 
     // Constants
     this.BASE_POINTS = 10;
+    this.MONEY_LADDER = [
+      100, 200, 300, 500, 1000,
+      2000, 4000, 8000, 16000, 32000,
+      64000, 125000, 250000, 500000, 1000000
+    ];
+    this.CHECKPOINTS = [4, 9]; // Indices of safe havens ($1,000 and $32,000)
+
+    // Millionaire State
+    this.ladderIndex = -1; // -1 means haven't won anything yet
+    this.lifelines = {
+      audience: true,
+      phone: true,
+      swap: true
+    };
   }
 
   init(rngFunc) {
@@ -36,6 +50,12 @@ export class GameEngine {
     this.createDeck();
     this.shuffleDeck();
     this.drawInitialCards();
+
+    // Reset specific mode states
+    if (this.mode === 'millionaire') {
+      this.ladderIndex = -1;
+      this.lifelines = { audience: true, phone: true, swap: true };
+    }
   }
 
   createDeck() {
@@ -107,20 +127,54 @@ export class GameEngine {
     if (choice === 'higher' && nextVal >= currentVal) correct = true;
     if (choice === 'lower' && nextVal <= currentVal) correct = true;
 
-    // Handle Double or Nothing logic
+    // --- MILLIONAIRE MODE ---
+    if (this.mode === 'millionaire') {
+      if (correct) {
+        this.ladderIndex++;
+        this.dealNext();
+
+        const money = this.MONEY_LADDER[this.ladderIndex];
+        const isWin = this.ladderIndex === this.MONEY_LADDER.length - 1;
+
+        if (isWin) {
+          this.gameOver = true;
+          return { result: 'win_big', money: money, card: this.currentCard };
+        }
+
+        return { result: 'correct', money: money, card: this.currentCard, level: this.ladderIndex };
+      } else {
+        // Find last checkpoint
+        let prize = 0;
+        for (let cp of this.CHECKPOINTS) {
+          if (this.ladderIndex >= cp) prize = this.MONEY_LADDER[cp];
+        }
+
+        this.gameOver = true;
+        this.dealNext();
+        return { result: 'game_over', prize: prize, card: this.currentCard };
+      }
+    }
+
+    // --- STREAK MODE & CLASSIC ---
+    // Handle Double or Nothing logic (Classic only)
     let points = 0;
     let multiplier = 1 + 0.2 * (this.streak);
 
-    if (this.doubleOrNothingActive) {
+    if (this.mode === 'streak') {
+        multiplier = 1; // Pure count
+    }
+
+    if (this.doubleOrNothingActive && this.mode === 'arcade') {
         if (correct) {
             multiplier *= 2;
         }
-        // Reset flag after use
         this.doubleOrNothingActive = false;
     }
 
     if (correct) {
       points = Math.floor(this.BASE_POINTS * multiplier);
+      if (this.mode === 'streak') points = 1; // 1 point per correct guess
+
       this.score += points;
       this.streak++;
       if (this.streak > this.streakMax) this.streakMax = this.streak;
@@ -134,21 +188,57 @@ export class GameEngine {
       // Incorrect
       if (this.shieldActive && !this.shieldUsed) {
           this.shieldUsed = true; // Consumed
-          // Don't lose streak, just don't gain points.
-          // Still advance card? Yes, reveal it.
           this.dealNext();
           return { result: 'saved', points: 0, card: this.currentCard };
       }
 
       this.gameOver = true;
       this.roundsPlayed++;
-      // Return the card that killed them (which is now current)
       this.dealNext();
       return { result: 'game_over', points: 0, card: this.currentCard };
     }
   }
 
   activatePowerup(type) {
+      // Millionaire Lifelines
+      if (this.mode === 'millionaire') {
+        if (type === 'audience' && this.lifelines.audience) {
+          this.lifelines.audience = false;
+          const next = this.getNextCard();
+          // Simulate audience: 80% chance to be right
+          const isHigher = next.value >= this.currentCard.value;
+          const isRight = Math.random() < 0.8;
+          const voteHigher = isRight ? isHigher : !isHigher;
+          const percent = 70 + Math.floor(Math.random() * 25);
+          return {
+             vote: voteHigher ? 'higher' : 'lower',
+             percent: percent
+          };
+        }
+        if (type === 'phone' && this.lifelines.phone) {
+          this.lifelines.phone = false;
+          const next = this.getNextCard();
+          // Simulate friend: 60% chance to be right
+          const isHigher = next.value >= this.currentCard.value;
+          const isRight = Math.random() < 0.6;
+          const guess = isRight ? (isHigher ? 'Higher' : 'Lower') : (isHigher ? 'Lower' : 'Higher');
+          const phrases = [
+            `I'm pretty sure it's ${guess}.`,
+            `Uhhh... maybe ${guess}?`,
+            `My gut says ${guess}, but don't blame me!`,
+            `Definitely ${guess}. Trust me.`
+          ];
+          return { message: phrases[Math.floor(Math.random() * phrases.length)] };
+        }
+        if (type === 'swap' && this.lifelines.swap) {
+          this.lifelines.swap = false;
+          this.dealNext(); // Skip current card
+          return { newCard: this.currentCard };
+        }
+        return false;
+      }
+
+      // Classic Powerups
       if (type === 'shield' && !this.shieldUsed) {
           this.shieldActive = true;
           return true;
@@ -156,7 +246,6 @@ export class GameEngine {
       if (type === 'hint' && !this.hintUsed) {
           this.hintUsed = true;
           const next = this.getNextCard();
-          // Return hint data: 'red', 'black', 'high' (>=8), 'low' (<8)
           return {
               color: next.color,
               range: next.value >= 8 ? 'High (8-A)' : 'Low (2-7)'
