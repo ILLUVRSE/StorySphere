@@ -10,6 +10,7 @@ import { getJson, getObjectBuffer, listObjects, getPresignedUrl } from "./storag
 import { validateTimelineSchema } from './types/timeline';
 import { db } from './db';
 import { MatchManager } from './matches/MatchManager';
+import { CampaignManager } from './services/CampaignManager';
 import { setupMatchSocket } from './ws/matchSocket';
 import { PixelPuckService } from './pixel-puck/PixelPuckService';
 import apiRoutes from './routes';
@@ -33,8 +34,11 @@ const io = new Server(server, {
 const matchManager = new MatchManager(io);
 matchManager.start();
 
+const campaignManager = new CampaignManager();
+// campaignManager.start() if needed
+
 // Use new namespaced socket handler
-setupMatchSocket(io, matchManager);
+setupMatchSocket(io, matchManager, campaignManager);
 
 // Pixel Puck Service
 const pixelPuckService = new PixelPuckService(io);
