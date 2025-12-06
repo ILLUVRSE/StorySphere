@@ -1,34 +1,89 @@
-import { CONSTANTS, mulberry32, cyrb128 } from './utils.js';
+  // Called continuously for smooth entity movement
+  update(dt, fireInput, timestamp) {
+      if (!this.alive) return { gameOver: true };
 
-export class GridEngine {
-  constructor(seedStr) {
-    this.seedStr = seedStr;
-    this.init();
-  }
+      const events = [];
 
-  init() {
-    // Seed PRNG
-    const seed = cyrb128(this.seedStr);
-    this.random = mulberry32(seed);
+      // 1. Fire Weapon
+      if (fireInput && (timestamp - this.lastFireTime > CONSTANTS.FIRE_RATE_MS)) {
+          this.bullets.push({
+              x: CONSTANTS.SHIP_COL + 0.5,
+              row: this.shipRow,
+              type: 'player'
+          });
+          this.lastFireTime = timestamp;
+          events.push({ type: 'shoot' });
+      }
 
-    // State
-    this.grid = [];
-    this.shipRow = Math.floor(CONSTANTS.ROWS / 2);
-    this.distance = 0;
-    this.score = 0;
-    this.shield = 0;
-    this.alive = true;
-    this.tileAdvanceMs = CONSTANTS.TILE_ADVANCE_START;
-    this.columnsSinceSpeedUp = 0;
+      // 2. Move Bullets
+      const bulletDist = CONSTANTS.BULLET_SPEED * (dt / 1000);
+      for (let i = this.bullets.length - 1; i >= 0; i--) {
+          const b = this.bullets[i];
+          b.x += bulletDist;
 
-    // Pre-fill grid with empty tiles
-    for (let c = 0; c < CONSTANTS.COLS; c++) {
-      this.grid.push(this.createEmptyColumn());
-    }
-  }
+          if (b.x > CONSTANTS.COLS + 2) {
+              this.bullets.splice(i, 1);
+              continue;
+          }
 
-  createEmptyColumn() {
-      return Array(CONSTANTS.ROWS).fill().map(() => ({ type: 'empty' }));
+          let hit = false;
+          for (let j = this.enemies.length - 1; j >= 0; j--) {
+              const e = this.enemies[j];
+              if (b.row === e.row && Math.abs(b.x - e.x) < 0.8) {
+                  const ex = e.x;
+                  const er = e.row;
+                  this.enemies.splice(j, 1);
+                  this.bullets.splice(i, 1);
+                  this.score += 10;
+                  events.push({ type: 'enemy_die', x: ex, row: er });
+                  hit = true;
+                  break;
+              }
+          }
+          if (hit) continue;
+
+          // Check Meteors
+          // Note: b.x is float. Grid index is floor.
+          // We need to account for the grid shift logic?
+          // If we are at x=5.5. Grid[5] corresponds to x=5..6.
+          const gridColIdx = Math.floor(b.x);
+          if (gridColIdx >= 0 && gridColIdx < this.grid.length) {
+              const tile = this.grid[gridColIdx][b.row];
+              if (tile && tile.type === 'meteor') {
+                  tile.type = 'empty';
+                  const bx = b.x;
+                  const br = b.row;
+                  this.bullets.splice(i, 1);
+                  this.score += 5;
+                  events.push({ type: 'enemy_hit', x: bx, row: br });
+                  continue;
+              }
+          }
+      }
+
+      // 3. Move Enemies
+      const enemyDist = CONSTANTS.ENEMY_SPEED * (dt / 1000);
+      for (let i = this.enemies.length - 1; i >= 0; i--) {
+          const e = this.enemies[i];
+          e.x -= enemyDist;
+
+          if (Math.abs(e.x - CONSTANTS.SHIP_COL) < 0.6 && e.row === this.shipRow) {
+               if (this.shield > 0) {
+                  this.shield--;
+                  this.enemies.splice(i, 1);
+                  events.push({ type: 'shield_break' });
+              } else {
+                  this.alive = false;
+                  return { gameOver: true, crashType: 'enemy', events };
+              }
+          }
+
+          if (e.x < -2) {
+              this.enemies.splice(i, 1);
+          }
+      }
+
+      return { gameOver: false, events };
   }
 
   advanceColumn(queuedMove) {
@@ -36,29 +91,27 @@ export class GridEngine {
 
       const events = [];
 
-      // 1. Execute Player Move
+      // 1. Shift Grid
+      this.grid.shift();
+      const newCol = this.generateColumn();
+      this.grid.push(newCol);
+
+      // 2. Shift Entities (Coordinate Space Adjustment)
+      this.bullets.forEach(b => b.x -= 1);
+      this.enemies.forEach(e => e.x -= 1);
+
+      // 3. Move Player
       const prevRow = this.shipRow;
       this.shipRow += queuedMove;
       if (this.shipRow < 0) this.shipRow = 0;
       if (this.shipRow >= CONSTANTS.ROWS) this.shipRow = CONSTANTS.ROWS - 1;
 
-      // Note: We don't trigger 'move' sound here because visual movement happened earlier/continuously
-      // But maybe a 'click' sound for locking in the row?
-      // Spec says "SFX (move, collide, pickup)".
-      // If I queue a move, and it executes here.
-      // Or maybe sound on input?
-      // I'll trigger 'move' event here if logical row changed.
-      if (this.shipRow !== prevRow) events.push('move');
-
-      // 2. Advance Grid
-      this.grid.shift();
-      const newCol = this.generateColumn();
-      this.grid.push(newCol);
+      if (this.shipRow !== prevRow) events.push({ type: 'move' });
 
       this.distance++;
       this.score += 1;
 
-      // 3. Update Speed
+      // 4. Speed Up
       this.columnsSinceSpeedUp++;
       if (this.columnsSinceSpeedUp >= CONSTANTS.SPEED_RAMP_COLUMNS) {
           this.tileAdvanceMs = Math.max(
@@ -68,42 +121,23 @@ export class GridEngine {
           this.columnsSinceSpeedUp = 0;
       }
 
-      // 4. Update Tile States (Lasers)
-      for (const col of this.grid) {
-          for (const tile of col) {
-              if (tile.type === 'laser' && tile.state === 'warning') {
-                  tile.state = 'firing';
-                  // maybe warning sound was on spawn?
-              }
-          }
-      }
-
-      // 5. Check Collisions
+      // 5. Check Static Collisions
       const shipTile = this.grid[CONSTANTS.SHIP_COL][this.shipRow];
       let crashType = null;
 
-      if (shipTile.type === 'empty') {
-          // Safe
-      } else if (shipTile.type === 'pickup') {
+      if (shipTile.type === 'pickup') {
           this.collectPickup(shipTile, events);
           shipTile.type = 'empty';
           delete shipTile.variant;
-      } else if (shipTile.type === 'bounce') {
-          // Safe
-      } else if (shipTile.type === 'laser') {
-          if (shipTile.state === 'firing') {
-               crashType = 'laser';
-          }
-      } else {
-          // Meteor
-          crashType = shipTile.type;
+      } else if (shipTile.type === 'meteor') {
+          crashType = 'meteor';
       }
 
       if (crashType) {
           if (this.shield > 0) {
               this.shield--;
               shipTile.type = 'empty';
-              events.push('shield_break'); // Optional sound
+              events.push({ type: 'shield_break' });
           } else {
               this.alive = false;
               return { gameOver: true, crashType, events };
@@ -116,60 +150,54 @@ export class GridEngine {
   collectPickup(tile, events) {
       if (tile.variant === 'boost') {
           this.score += 50;
-          events.push('pickup');
+          events.push({ type: 'pickup' });
       } else if (tile.variant === 'shield') {
           this.shield++;
-          events.push('pickup');
-      } else if (tile.variant === 'portal') {
-          const dir = this.random() > 0.5 ? 2 : -2;
-          this.shipRow += dir;
-          if (this.shipRow < 0) this.shipRow = 0;
-          if (this.shipRow >= CONSTANTS.ROWS) this.shipRow = CONSTANTS.ROWS - 1;
-          events.push('teleport');
+          events.push({ type: 'pickup' });
       }
   }
 
   generateColumn() {
-      const hazardProb = Math.min(0.08 + this.distance / 2000, 0.5);
+      const hazardProb = Math.min(0.08 + this.distance / 2000, 0.4);
+      const enemyProb = Math.min(0.02 + this.distance / 3000, 0.2);
+
       const col = Array(CONSTANTS.ROWS).fill().map(() => ({ type: 'empty' }));
 
       if (this.random() < hazardProb) {
-          const patternType = Math.floor(this.random() * 5);
+          const type = this.random();
+          const r = Math.floor(this.random() * CONSTANTS.ROWS);
 
-          if (patternType === 0) { // Single Meteor
-              const r = Math.floor(this.random() * CONSTANTS.ROWS);
+          if (type < 0.7) {
               col[r] = { type: 'meteor' };
-          } else if (patternType === 1) { // Wide Meteor
-              const r = Math.floor(this.random() * (CONSTANTS.ROWS - 1));
-              col[r] = { type: 'meteor', variant: 'wide' };
-              col[r+1] = { type: 'meteor', variant: 'wide' };
-          } else if (patternType === 2) { // Laser
-               const r = Math.floor(this.random() * CONSTANTS.ROWS);
-               col[r] = { type: 'laser', state: 'warning' };
-          } else if (patternType === 3) { // Wall with gap
-               const gap = Math.floor(this.random() * CONSTANTS.ROWS);
-               for(let i=0; i<CONSTANTS.ROWS; i++) {
-                   if (i !== gap) col[i] = { type: 'meteor' };
-               }
-          } else if (patternType === 4) { // Bounce field
-               const r = Math.floor(this.random() * CONSTANTS.ROWS);
-               col[r] = { type: 'bounce' };
           }
       }
 
-      if (this.random() < 0.05) {
+      if (this.random() < enemyProb) {
+          const r = Math.floor(this.random() * CONSTANTS.ROWS);
+          // Spawn just offscreen.
+          // Grid width is 12 (0..11). Offscreen is 12.
+          // BUT advanceColumn pushes new col at index 11?
+          // No, grid length is 12. push adds to end.
+          // Screen X for last col is 11.
+          // We spawn enemy at 12 to come in smoothly.
+          this.enemies.push({
+              x: CONSTANTS.COLS + 0.5,
+              row: r,
+              type: this.random() > 0.5 ? 'chaser' : 'turret',
+              hp: 1
+          });
+      }
+
+      if (this.random() < 0.03) {
            const empties = col.map((t, i) => t.type === 'empty' ? i : -1).filter(i => i !== -1);
            if (empties.length > 0) {
                const idx = empties[Math.floor(this.random() * empties.length)];
                const pType = this.random();
                let variant = 'boost';
-               if (pType < 0.2) variant = 'shield';
-               else if (pType < 0.3) variant = 'portal';
-
+               if (pType < 0.3) variant = 'shield';
                col[idx] = { type: 'pickup', variant };
            }
       }
 
       return col;
   }
-}
