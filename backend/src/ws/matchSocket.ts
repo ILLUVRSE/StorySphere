@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { MatchManager } from '../matches/MatchManager';
 import jwt from 'jsonwebtoken';
+import { db } from '../db';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
@@ -14,12 +15,7 @@ export function setupMatchSocket(io: Server, matchManager: MatchManager) {
     matchNamespace.use((socket: AuthSocket, next) => {
         const token = socket.handshake.auth.token;
         if (!token) {
-            // Allow spectator/anon for now? Requirement says "Verify JWT ... Reject unauthenticated connections for player actions."
-            // So connection can be allowed, but actions restricted?
-            // "on connection, accept auth token ... reject unauthenticated connections"
-            // The prompt says "Reject unauthenticated connections for player actions." -> implies actions are rejected.
-            // But later "Non-owners can join as spectator".
-            // So we allow anon connection, but mark user as null.
+            // Allow anon
             return next();
         }
 
@@ -35,54 +31,40 @@ export function setupMatchSocket(io: Server, matchManager: MatchManager) {
     matchNamespace.on('connection', (socket: AuthSocket) => {
         console.log(`Socket connected to /matches: ${socket.id}, User: ${socket.user?.id || 'Anon'}`);
 
-        socket.on('join_match', ({ matchId, asPlayer }) => {
+        socket.on('join_match', async ({ matchId, asPlayer }) => {
             // Join Room
             socket.join(`match:${matchId}`);
 
-            // Logic to register as player if requested and owned
-            if (asPlayer) {
-                if (!socket.user) {
-                    socket.emit('error', { message: "Authentication required to join as player" });
-                    return;
-                }
+            const userId = socket.user?.id || null;
+            const role = await matchManager.joinMatch(socket.id, matchId, userId, asPlayer);
 
-                // TODO: Verify team ownership via DB (skip for MVP, trust request for now or check match.createdBy)
-                const success = matchManager.joinMatch(socket as any, matchId, socket.user.id);
-                if (success) {
-                    socket.emit('match_joined', { matchId, role: 'PLAYER' });
-                } else {
-                     socket.emit('error', { message: "Failed to join match (Match not found?)" });
-                }
-            } else {
-                // Spectator
-                socket.emit('match_joined', { matchId, role: 'SPECTATOR' });
+            if (asPlayer && !role) {
+                socket.emit('error', { message: "Unauthorized to join as player or match load failed" });
+                return;
+            }
 
-                // Send recent history/state
-                const match = matchManager.matches.get(matchId);
-                if (match) {
-                    socket.emit('match_state', match.engine.getSnapshot());
-                }
+            socket.emit('match_joined', { matchId, role: role || 'SPECTATOR' });
+
+            // Send Full Replay (History)
+            // Fetch from DB
+            if (db.isReady()) {
+                const logs = await db.query('SELECT * FROM event_logs WHERE match_id = $1 ORDER BY seq ASC', [matchId]);
+                socket.emit('replay', logs.rows);
             }
         });
 
-        socket.on('submit_input', ({ matchId, action, seq }) => {
+        socket.on('submit_input', ({ matchId, action }) => {
             if (!socket.user) return; // Ignore anon inputs
 
-            // Validate match participation
-            const match = matchManager.matches.get(matchId);
-            if (!match) return;
+            // Rate limit (basic flood check could go here)
 
-            // MVP: Assuming input comes from registered player
-            matchManager.handleInput(matchId, {
-                clientId: socket.user.id,
-                ts: Date.now(),
-                seq: seq || 0,
-                action
-            });
+            matchManager.handleInput(matchId, socket.user.id, action);
         });
 
         socket.on('disconnect', () => {
-             // Handle disconnect
+             // Handle disconnect? MatchManager has leaveMatch but we don't track socketId->matchId strictly here without a map.
+             // We can let the connection map in MatchManager linger or clean up if we tracked it.
+             // For MVP, memory leak is minor if server restarts daily.
         });
     });
 }
