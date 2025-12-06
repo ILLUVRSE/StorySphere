@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Grid Kart</title>
+    <!-- Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -21,10 +23,11 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            background: #000;
         }
         canvas {
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-            image-rendering: pixelated; /* Crisp retro look */
+            display: block; /* Removes weird inline spacing */
+            outline: none;
         }
         #ui-layer {
             position: absolute;
@@ -36,16 +39,30 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: 10px;
+            padding: 20px;
             box-sizing: border-box;
         }
         .hud-element {
-            background: rgba(0, 77, 64, 0.8);
-            padding: 5px 10px;
-            border: 2px solid #009688;
-            border-radius: 4px;
-            font-size: 16px;
-            text-shadow: 1px 1px 0 #000;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 16px;
+            border: 2px solid #00e676; /* Neon Green */
+            border-radius: 8px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 5px #00e676;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .hud-bottom-right {
+             text-align: right;
+        }
+        #speedometer {
+            font-size: 32px;
+            color: #ffd700;
+            border-color: #ffd700;
+            text-shadow: 0 0 5px #ffd700;
         }
         #start-screen, #results-screen {
             position: absolute;
@@ -53,7 +70,8 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 77, 64, 0.95);
+            background: rgba(0, 20, 20, 0.85);
+            backdrop-filter: blur(5px);
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -62,81 +80,101 @@
             z-index: 10;
         }
         .hidden { display: none !important; }
-        h1 { color: #ffd700; font-size: 40px; margin-bottom: 20px; text-transform: uppercase; }
+        h1 {
+            color: #ffd700;
+            font-size: 64px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px #ffd700, 4px 4px 0 #004d40;
+            font-style: italic;
+        }
+        p {
+            color: #b2dfdb;
+            font-size: 18px;
+            margin-bottom: 40px;
+        }
         button {
-            background: #009688;
+            background: linear-gradient(180deg, #009688, #004d40);
             color: #fff;
             border: none;
-            padding: 15px 30px;
-            font-size: 20px;
+            padding: 15px 40px;
+            font-size: 24px;
+            font-weight: bold;
             cursor: pointer;
             font-family: inherit;
             margin-top: 20px;
-            border: 2px solid #ffd700;
+            border: 2px solid #00e676;
+            border-radius: 30px;
             text-transform: uppercase;
+            box-shadow: 0 0 15px rgba(0, 230, 118, 0.4);
+            transition: transform 0.1s, box-shadow 0.1s;
         }
-        button:hover { background: #00796b; }
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(0, 230, 118, 0.8);
+            background: linear-gradient(180deg, #26a69a, #00695c);
+        }
+        button:active {
+            transform: scale(0.95);
+        }
 
-        /* Mobile controls overlay */
-        #mobile-controls {
-            display: none; /* Shown via JS on touch devices */
-            position: absolute;
-            bottom: 20px;
-            width: 100%;
-            height: 150px;
-            pointer-events: auto;
-            z-index: 5;
+        /* Drift gauge */
+        #drift-gauge-container {
+             width: 200px;
+             height: 10px;
+             background: #333;
+             border: 2px solid #555;
+             border-radius: 5px;
+             margin-top: 5px;
+             overflow: hidden;
+             display: none; /* hidden when not drifting */
         }
-        .control-zone {
-            position: absolute;
-            bottom: 0;
+        #drift-bar {
+            width: 0%;
             height: 100%;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px dashed rgba(255, 255, 255, 0.3);
-            border-radius: 10px;
+            background: #ff3d00;
+            transition: width 0.1s linear;
         }
-        #zone-left { left: 10px; width: 40%; }
-        #zone-right { right: 10px; width: 40%; }
+
     </style>
 </head>
 <body>
 
 <div id="game-container">
-    <canvas id="gameCanvas"></canvas>
-
+    <!-- Canvas created by Renderer.js (Three.js) will go here or replace the old one -->
     <div id="ui-layer">
         <div style="display: flex; justify-content: space-between; width: 100%;">
             <div id="lap-timer" class="hud-element">TIME: 00:00.00</div>
             <div id="lap-counter" class="hud-element">LAP: 1/3</div>
         </div>
         <div style="display: flex; justify-content: space-between; width: 100%; align-items: flex-end;">
-            <div id="speedometer" class="hud-element">0 KM/H</div>
+            <div class="hud-bottom-left">
+                 <div id="speedometer" class="hud-element">0 KM/H</div>
+                 <div id="drift-gauge-container"><div id="drift-bar"></div></div>
+            </div>
             <div id="best-time" class="hud-element">BEST: --:--.--</div>
         </div>
     </div>
 
     <div id="start-screen">
-        <h1>Grid Kart</h1>
-        <p>Use WASD / Arrows to Drive</p>
-        <p>SPACE to Drift</p>
+        <h1>Grid Kart 3D</h1>
+        <p>Use WASD / Arrows to Drive | SPACE / SHIFT to Drift</p>
         <button id="start-btn">Start Race</button>
     </div>
 
     <div id="results-screen" class="hidden">
         <h1>Finished!</h1>
-        <div id="final-time" style="font-size: 24px; color: #ffd700;">00:00.00</div>
-        <div id="new-record" style="color: #00e676; display: none;">NEW RECORD!</div>
+        <div id="final-time" style="font-size: 32px; color: #ffd700; text-shadow: 0 0 10px #ffd700;">00:00.00</div>
+        <div id="new-record" style="color: #00e676; display: none; font-size: 24px; margin-top: 10px;">NEW RECORD!</div>
         <button id="restart-btn">Race Again</button>
-    </div>
-
-    <div id="mobile-controls">
-        <div id="zone-left" class="control-zone"></div>
-        <div id="zone-right" class="control-zone"></div>
     </div>
 </div>
 
-<!-- Modules -->
-<script type="module" src="./main.js"></script>
+<!-- Main Game Module -->
+<script type="module">
+    import { Game } from './main.js';
+    window.gameInstance = new Game();
+</script>
 
 </body>
 </html>

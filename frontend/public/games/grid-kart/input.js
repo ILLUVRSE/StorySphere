@@ -1,127 +1,62 @@
-export class Input {
-    constructor() {
-        this.keys = {
-            up: false,
-            down: false,
-            left: false,
-            right: false,
-            drift: false
-        };
+// TILE Constants used in engine.js and renderer.js
+import { TILE, TrackGenerator } from './generator.js';
 
-        this.touchZones = {
-            left: null,
-            right: null
-        };
+export const Input = {
+    keys: {
+        up: false,
+        down: false,
+        left: false,
+        right: false,
+        drift: false
+    },
 
-        this.init();
-    }
+    init: () => {
+        window.addEventListener('keydown', (e) => {
+            switch(e.code) {
+                case 'ArrowUp':
+                case 'KeyW': Input.keys.up = true; break;
+                case 'ArrowDown':
+                case 'KeyS': Input.keys.down = true; break;
+                case 'ArrowLeft':
+                case 'KeyA': Input.keys.left = true; break;
+                case 'ArrowRight':
+                case 'KeyD': Input.keys.right = true; break;
+                case 'Space':
+                case 'ShiftLeft':
+                case 'ShiftRight': Input.keys.drift = true; break;
+            }
+        });
 
-    init() {
-        window.addEventListener('keydown', (e) => this.handleKey(e, true));
-        window.addEventListener('keyup', (e) => this.handleKey(e, false));
+        window.addEventListener('keyup', (e) => {
+            switch(e.code) {
+                case 'ArrowUp':
+                case 'KeyW': Input.keys.up = false; break;
+                case 'ArrowDown':
+                case 'KeyS': Input.keys.down = false; break;
+                case 'ArrowLeft':
+                case 'KeyA': Input.keys.left = false; break;
+                case 'ArrowRight':
+                case 'KeyD': Input.keys.right = false; break;
+                case 'Space':
+                case 'ShiftLeft':
+                case 'ShiftRight': Input.keys.drift = false; break;
+            }
+        });
 
-        // Touch setup
-        if ('ontouchstart' in window) {
-            this.setupTouch();
-        }
-    }
-
-    handleKey(e, isDown) {
-        switch(e.code) {
-            case 'ArrowUp':
-            case 'KeyW':
-                this.keys.up = isDown;
-                break;
-            case 'ArrowDown':
-            case 'KeyS':
-                this.keys.down = isDown;
-                break;
-            case 'ArrowLeft':
-            case 'KeyA':
-                this.keys.left = isDown;
-                break;
-            case 'ArrowRight':
-            case 'KeyD':
-                this.keys.right = isDown;
-                break;
-            case 'Space':
-            case 'ShiftLeft':
-                this.keys.drift = isDown;
-                break;
-        }
-    }
-
-    setupTouch() {
+        // Touch / Mobile Controls (Overlay)
         const leftZone = document.getElementById('zone-left');
         const rightZone = document.getElementById('zone-right');
-        const mobileControls = document.getElementById('mobile-controls');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
 
-        if (mobileControls) mobileControls.style.display = 'block';
+        // Simple touch logic: Left Zone = Left/Right (slide), Right Zone = Gas/Drift
+        // This is a placeholder for complex touch. Simple arcade buttons work better.
 
-        const handleTouch = (zone, type, e) => {
-            e.preventDefault();
-            const touches = e.changedTouches;
-            // Simple logic:
-            // Left Zone: Left/Right based on X relative to center of zone
-            // Right Zone: Tap/Hold = Gas. Double Tap or low Y = Brake.
-            // Center Screen = Drift?
-
-            // Actually, let's keep it simple:
-            // Left Zone: Touch left half of zone -> Left, Right half -> Right
-            // Right Zone: Touch -> Gas.
-            // Drift is tricky. Maybe a dedicated button?
-            // Or: Right Zone Top = Gas, Right Zone Bottom = Drift+Gas?
-
-            if (zone === 'left') {
-                if (type === 'end') {
-                    this.keys.left = false;
-                    this.keys.right = false;
-                    return;
-                }
-                const rect = leftZone.getBoundingClientRect();
-                const t = touches[0];
-                const relX = t.clientX - rect.left;
-                if (relX < rect.width / 2) {
-                    this.keys.left = true;
-                    this.keys.right = false;
-                } else {
-                    this.keys.left = false;
-                    this.keys.right = true;
-                }
-            }
-
-            if (zone === 'right') {
-                if (type === 'end') {
-                    this.keys.up = false;
-                    this.keys.drift = false;
-                    return;
-                }
-                this.keys.up = true;
-                // If touching bottom half, drift
-                const rect = rightZone.getBoundingClientRect();
-                const t = touches[0];
-                const relY = t.clientY - rect.top;
-                if (relY > rect.height * 0.6) {
-                    this.keys.drift = true;
-                } else {
-                    this.keys.drift = false;
-                }
-            }
-        };
-
-        if (leftZone) {
-            leftZone.addEventListener('touchstart', (e) => handleTouch('left', 'start', e));
-            leftZone.addEventListener('touchmove', (e) => handleTouch('left', 'move', e));
-            leftZone.addEventListener('touchend', (e) => handleTouch('left', 'end', e));
-        }
-        if (rightZone) {
-            rightZone.addEventListener('touchstart', (e) => handleTouch('right', 'start', e));
-            rightZone.addEventListener('touchmove', (e) => handleTouch('right', 'move', e));
-            rightZone.addEventListener('touchend', (e) => handleTouch('right', 'end', e));
-        }
+        // For now, let's just ensure keyboard is solid.
     }
+};
 
-    getState() {
-        return { ...this.keys };
-    }
-}
+export const MathUtils = {
+    dist: (x1, y1, x2, y2) => Math.sqrt((x2-x1)**2 + (y2-y1)**2),
+    lerp: (a, b, t) => a + (b - a) * t
+};
