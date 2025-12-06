@@ -20,7 +20,8 @@
     ],
     "paths": {
       "@/*": ["./*"],
-      "@riverport/engine": ["../shared/riverport-engine/src"]
+      "@riverport/engine": ["../shared/riverport-engine/src"],
+      "@pixel-puck/engine": ["../shared/pixel-puck-engine/src"]
     }
   },
   "include": [
