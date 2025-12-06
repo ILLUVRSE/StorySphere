@@ -27,3 +27,55 @@ export function cyrb128(str) {
 export function formatMoney(amount) {
     return "$" + amount.toLocaleString();
 }
+
+export class TweenManager {
+    constructor() {
+        this.tweens = [];
+    }
+
+    add(target, props, duration, easing = t => t) {
+        const tween = {
+            target,
+            start: {},
+            end: props,
+            duration,
+            time: 0,
+            easing,
+            finished: false
+        };
+        for (const key in props) {
+            tween.start[key] = target[key] || 0;
+        }
+        this.tweens.push(tween);
+        return new Promise(resolve => {
+            tween.onComplete = resolve;
+        });
+    }
+
+    update(dt) {
+        for (let i = this.tweens.length - 1; i >= 0; i--) {
+            const t = this.tweens[i];
+            t.time += dt;
+            let progress = t.time / t.duration;
+            if (progress > 1) progress = 1;
+
+            const ease = t.easing(progress);
+
+            for (const key in t.end) {
+                t.target[key] = t.start[key] + (t.end[key] - t.start[key]) * ease;
+            }
+
+            if (progress === 1) {
+                t.finished = true;
+                if (t.onComplete) t.onComplete();
+                this.tweens.splice(i, 1);
+            }
+        }
+    }
+}
+
+export const Easing = {
+    Linear: t => t,
+    EaseOutQuad: t => t * (2 - t),
+    EaseOutCubic: t => (--t)*t*t+1
+};
