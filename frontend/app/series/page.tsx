@@ -1,8 +1,8 @@
 import SeriesBrowser from "./series-browser";
-import { loadYuGiOhSeasons } from "@/lib/ygo";
+import { loadBeverlyHillbilliesSeasonsWithDurations } from "@/lib/media";
 
 export default function SeriesPage() {
-  const seasons = loadYuGiOhSeasons();
+  const seasons = loadBeverlyHillbilliesSeasonsWithDurations();
 
   return (
     <div className="space-y-6">
@@ -10,18 +10,18 @@ export default function SeriesPage() {
         <p className="uppercase text-xs tracking-[0.3em] text-white/60 mb-2">
           Series
         </p>
-        <h1 className="text-3xl font-serif font-bold">Yu-Gi-Oh!</h1>
+        <h1 className="text-3xl font-serif font-bold">The Beverly Hillbillies</h1>
         <p className="text-white/75">
-          Browse each season, pick an episode, and play instantly from the local
-          library.
+          Browse episodes sourced from{" "}
+          <code className="font-mono text-white">frontend/public/Series/Beverly-Hillbillies</code>.
         </p>
       </header>
 
       {seasons.length === 0 ? (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-white/70">
-          No episodes found in <code className="font-mono text-white">public/</code>.
-          Drop MP4s named like "001 - S01 E01 - Title.mp4" to populate the
-          library.
+          No episodes found. Drop MP4s into{" "}
+          <code className="font-mono text-white">frontend/public/Series/Beverly-Hillbillies</code>{" "}
+          to populate the library.
         </div>
       ) : (
         <SeriesBrowser seasons={seasons} />

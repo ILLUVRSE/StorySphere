@@ -104,7 +104,7 @@ export const updateSkillAllocation = async (req: Request, res: Response) => {
         return res.status(503).json({ error: 'Database unavailable' });
     }
 
-    const client = await db.pool.connect();
+    const client = await db.getClient();
 
     try {
         await client.query('BEGIN');

@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Season, Episode } from "@/lib/ygo";
+import type { Season, Episode } from "@/lib/media";
 
 type Props = {
   seasons: Season[];
