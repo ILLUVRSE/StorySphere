@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "node-pg-migrate": "^8.0.3",
     "seedrandom": "^3.0.5"
   },
   "devDependencies": {

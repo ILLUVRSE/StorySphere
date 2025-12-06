@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { MatchManager } from '../matches/MatchManager';
+import { CampaignManager } from '../services/CampaignManager';
 import jwt from 'jsonwebtoken';
 import { db } from '../db';
 
@@ -9,8 +10,12 @@ interface AuthSocket extends Socket {
     user?: any;
 }
 
-export function setupMatchSocket(io: Server, matchManager: MatchManager) {
+export function setupMatchSocket(io: Server, matchManager: MatchManager, campaignManager: CampaignManager) {
     const matchNamespace = io.of('/matches');
+
+    // Inject IO into managers
+    matchManager.setIo(io);
+    campaignManager.setIo(io);
 
     matchNamespace.use((socket: AuthSocket, next) => {
         const token = socket.handshake.auth.token;
@@ -36,22 +41,31 @@ export function setupMatchSocket(io: Server, matchManager: MatchManager) {
             socket.join(`match:${matchId}`);
 
             const userId = socket.user?.id || null;
-            const role = await matchManager.joinMatch(socket.id, matchId, userId, asPlayer);
+
+            // Determine type (Optimization: Cache this or let managers try)
+            // For now, try MatchManager first (Baseball), then Campaign
+            let role = await matchManager.joinMatch(socket.id, matchId, userId, asPlayer);
+            let type = 'baseball';
+
+            if (!role) {
+                // Try Campaign
+                role = await campaignManager.joinMatch(socket.id, matchId, userId);
+                type = 'campaign';
+            }
 
             if (asPlayer && !role) {
                 socket.emit('error', { message: "Unauthorized to join as player or match load failed" });
                 return;
             }
 
-            socket.emit('match_joined', { matchId, role: role || 'SPECTATOR' });
+            socket.emit('match_joined', { matchId, role: role || 'SPECTATOR', type });
 
-            // Send Lobby State immediately
-            const lobbyState = matchManager.getLobbyState(matchId);
-            if (lobbyState) {
-                socket.emit('lobby_state', lobbyState);
+            if (type === 'baseball') {
+                const lobbyState = matchManager.getLobbyState(matchId);
+                if (lobbyState) socket.emit('lobby_state', lobbyState);
             }
 
-            // Send Full Replay (History) if match in progress
+            // Replay logic handles both if event_logs used
             if (db.isReady()) {
                 const logs = await db.query('SELECT * FROM event_logs WHERE match_id = $1 ORDER BY seq ASC', [matchId]);
                 if (logs.rows.length > 0) {
@@ -60,6 +74,7 @@ export function setupMatchSocket(io: Server, matchManager: MatchManager) {
             }
         });
 
+        // --- Baseball Events ---
         socket.on('submit_lineup', ({ matchId, battingOrder, bench, startingPitcher }) => {
             if (!socket.user) return;
             matchManager.handleLineupSubmission(matchId, socket.user.id, { battingOrder, bench, startingPitcher });
@@ -76,11 +91,20 @@ export function setupMatchSocket(io: Server, matchManager: MatchManager) {
         });
 
         socket.on('submit_input', ({ matchId, action }) => {
-            if (!socket.user) return; // Ignore anon inputs
-
-            // Rate limit (basic flood check could go here)
-
+            if (!socket.user) return;
+            // Baseball Input
             matchManager.handleInput(matchId, socket.user.id, action);
+        });
+
+        // --- Campaign Events ---
+        socket.on('start_skirmish', ({ matchId, territoryId }) => {
+            if (!socket.user) return;
+            campaignManager.startSkirmish(matchId, socket.user.id, territoryId);
+        });
+
+        socket.on('submit_move', ({ matchId, from, to }) => {
+            if (!socket.user) return;
+            campaignManager.handleMove(matchId, socket.user.id, { from, to });
         });
 
         socket.on('disconnect', () => {

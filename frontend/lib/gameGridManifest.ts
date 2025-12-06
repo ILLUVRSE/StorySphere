@@ -382,6 +382,20 @@ export const gameGridManifest: GameGridSpec[] = [
     },
   },
   {
+    slug: "checkers-campaign",
+    title: "Checkers Campaign",
+    emoji: "🛡️",
+    shortDesc: "Command armies in scenario-based skirmishes.",
+    playPath: "/games/checkers-campaign/index.html",
+    specs: {
+      coreLoop: "Deploy armies on a strategic map, then fight in 3-min Checkers skirmishes with forts and siege units.",
+      hook: "Classic Checkers rules enhanced with terrain, specialized units, and a meta-campaign.",
+      fit: "High-stakes strategy fitting GameGrid's competitive ethos.",
+      complexity: "Medium to High.",
+      retention: "Campaign progression, territory control, seasonal wars.",
+    },
+  },
+  {
     slug: "checkers",
     title: "Checkers",
     emoji: "⭕",
